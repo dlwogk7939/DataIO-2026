@@ -1,6 +1,6 @@
 // @ts-ignore - hyparquet types
 import { parquetReadObjects, parquetMetadata } from "hyparquet";
-import type { ParsedData, Building, HourlyEntry, DailyEntry, BuildingConsumption, TempVsElectricity, SummaryMetrics } from "./csvParser";
+import type { ParsedData, Building, HourlyEntry, DailyEntry, BuildingConsumption, TempVsElectricity, SummaryMetrics, BuildingMoMChange } from "./csvParser";
 
 // Re-export ParsedData for convenience
 export type { ParsedData };
@@ -293,6 +293,41 @@ export function buildParsedDataFromGold(rows: GoldRow[]): ParsedData {
     weatherCorrelation,
   };
 
+  // --- Month-over-month building changes ---
+  const buildingMonthMap = new Map<string, Map<string, number>>();
+  for (const r of elecRows) {
+    const d = new Date(r.readingtime);
+    if (isNaN(d.getTime()) || !r.sitename) continue;
+    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    if (!buildingMonthMap.has(r.sitename)) buildingMonthMap.set(r.sitename, new Map());
+    const months = buildingMonthMap.get(r.sitename)!;
+    months.set(monthKey, (months.get(monthKey) || 0) + (r.readingvalue || 0));
+  }
+
+  const buildingMoMChanges: BuildingMoMChange[] = [];
+  for (const [sitename, months] of buildingMonthMap) {
+    const sortedMonths = Array.from(months.entries()).sort(([a], [b]) => a.localeCompare(b));
+    for (let i = 1; i < sortedMonths.length; i++) {
+      const [prevKey, prevKwh] = sortedMonths[i - 1];
+      const [currKey, currKwh] = sortedMonths[i];
+      const changeKwh = currKwh - prevKwh;
+      const changePct = prevKwh > 0 ? Math.round((changeKwh / prevKwh) * 10000) / 100 : 0;
+      const fmtMonth = (k: string) => {
+        const [y, m] = k.split("-");
+        return new Date(Number(y), Number(m) - 1).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+      };
+      buildingMoMChanges.push({
+        name: sitename,
+        prevMonthKwh: Math.round(prevKwh),
+        currMonthKwh: Math.round(currKwh),
+        changeKwh: Math.round(changeKwh),
+        changePct,
+        prevMonthLabel: fmtMonth(prevKey),
+        currMonthLabel: fmtMonth(currKey),
+      });
+    }
+  }
+
   return {
     buildings,
     hourlyData,
@@ -300,5 +335,6 @@ export function buildParsedDataFromGold(rows: GoldRow[]): ParsedData {
     buildingConsumption,
     tempVsElectricity,
     summaryMetrics,
+    buildingMoMChanges,
   };
 }

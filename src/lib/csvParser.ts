@@ -74,6 +74,16 @@ export interface SummaryMetrics {
   weatherCorrelation: number;
 }
 
+export interface BuildingMoMChange {
+  name: string;
+  prevMonthKwh: number;
+  currMonthKwh: number;
+  changeKwh: number;
+  changePct: number;
+  prevMonthLabel: string;
+  currMonthLabel: string;
+}
+
 export interface ParsedData {
   buildings: Building[];
   hourlyData: HourlyEntry[];
@@ -81,6 +91,7 @@ export interface ParsedData {
   buildingConsumption: BuildingConsumption[];
   tempVsElectricity: TempVsElectricity[];
   summaryMetrics: SummaryMetrics;
+  buildingMoMChanges: BuildingMoMChange[];
 }
 
 // ── CSV file parsing ─────────────────────────────────────────────────────────
@@ -342,6 +353,42 @@ export async function parseAllFiles(files: Record<string, File>): Promise<Parsed
     weatherCorrelation,
   };
 
+  // Month-over-month building changes
+  const buildingMonthMap = new Map<string, Map<string, number>>();
+  for (const r of allMeterRows) {
+    const d = new Date(r.timestamp);
+    if (isNaN(d.getTime()) || !r.buildingId) continue;
+    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    if (!buildingMonthMap.has(r.buildingId)) buildingMonthMap.set(r.buildingId, new Map());
+    const months = buildingMonthMap.get(r.buildingId)!;
+    months.set(monthKey, (months.get(monthKey) || 0) + r.kwh);
+  }
+
+  const buildingMoMChanges: import("./csvParser").BuildingMoMChange[] = [];
+  const buildingNameMap = new Map(buildings.map((b) => [b.id, b.name]));
+  for (const [bId, months] of buildingMonthMap) {
+    const sortedMonths = Array.from(months.entries()).sort(([a], [b]) => a.localeCompare(b));
+    for (let i = 1; i < sortedMonths.length; i++) {
+      const [prevKey, prevKwh] = sortedMonths[i - 1];
+      const [currKey, currKwh] = sortedMonths[i];
+      const changeKwh = currKwh - prevKwh;
+      const changePct = prevKwh > 0 ? Math.round((changeKwh / prevKwh) * 10000) / 100 : 0;
+      const fmtMonth = (k: string) => {
+        const [y, m] = k.split("-");
+        return new Date(Number(y), Number(m) - 1).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+      };
+      buildingMoMChanges.push({
+        name: buildingNameMap.get(bId) || bId,
+        prevMonthKwh: Math.round(prevKwh),
+        currMonthKwh: Math.round(currKwh),
+        changeKwh: Math.round(changeKwh),
+        changePct,
+        prevMonthLabel: fmtMonth(prevKey),
+        currMonthLabel: fmtMonth(currKey),
+      });
+    }
+  }
+
   return {
     buildings,
     hourlyData,
@@ -349,5 +396,6 @@ export async function parseAllFiles(files: Record<string, File>): Promise<Parsed
     buildingConsumption,
     tempVsElectricity,
     summaryMetrics,
+    buildingMoMChanges,
   };
 }
