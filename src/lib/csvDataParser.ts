@@ -326,6 +326,20 @@ export async function parseAllCsvFiles(
   });
 
   // ── Daily aggregation ──
+  // We need precipitation & wind speed from the raw elecRows, keyed by date
+  const dailyWeatherMap = new Map<string, { precips: number[]; winds: number[] }>();
+  for (const r of elecRows) {
+    const d = toDate(r["readingtime"]);
+    if (!d) continue;
+    const dateKey = d.toISOString().split("T")[0];
+    const existing = dailyWeatherMap.get(dateKey) || { precips: [], winds: [] };
+    const precip = toNum(r["precipitation"]);
+    const wind = toNum(r["wind_speed_10m"]);
+    if (precip !== 0) existing.precips.push(precip);
+    if (wind !== 0) existing.winds.push(wind);
+    dailyWeatherMap.set(dateKey, existing);
+  }
+
   const dailyMap = new Map<string, { kwh: number; temps: number[]; date: Date }>();
   for (const h of hourlyData) {
     const d = new Date(h.timestamp);
@@ -336,7 +350,7 @@ export async function parseAllCsvFiles(
     dailyMap.set(dateKey, existing);
   }
 
-  // Supplement with weather_daily_selected.csv if daily map is thin on temps
+  // Supplement with weather_daily_selected.csv if daily map is thin on temps/precip/wind
   for (const row of weatherDaily.rows) {
     const dateVal = toStr(row["date"]);
     if (!dateVal) continue;
@@ -348,19 +362,38 @@ export async function parseAllCsvFiles(
       const temp = toNum(row["temperature_2m"]);
       if (temp !== 0) existing.temps.push(temp);
     }
+    // Supplement weather fields from daily CSV
+    if (!dailyWeatherMap.has(dateKey)) {
+      const precip = toNum(row["precipitation"]);
+      const wind = toNum(row["wind_speed_10m"]);
+      const entry = { precips: [] as number[], winds: [] as number[] };
+      if (precip !== 0) entry.precips.push(precip);
+      if (wind !== 0) entry.winds.push(wind);
+      if (entry.precips.length > 0 || entry.winds.length > 0) {
+        dailyWeatherMap.set(dateKey, entry);
+      }
+    }
   }
+
+  const avgArr = (arr: number[]) =>
+    arr.length > 0 ? Math.round((arr.reduce((s, v) => s + v, 0) / arr.length) * 100) / 100 : 0;
 
   const dailyData: DailyEntry[] = Array.from(dailyMap.entries())
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([dateKey, val]) => ({
-      date: dateKey,
-      label: val.date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      totalKwh: Math.round(val.kwh),
-      avgTemperature:
-        val.temps.length > 0
-          ? Math.round((val.temps.reduce((s, t) => s + t, 0) / val.temps.length) * 10) / 10
-          : 0,
-    }));
+    .map(([dateKey, val]) => {
+      const weather = dailyWeatherMap.get(dateKey);
+      return {
+        date: dateKey,
+        label: val.date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        totalKwh: Math.round(val.kwh),
+        avgTemperature:
+          val.temps.length > 0
+            ? Math.round((val.temps.reduce((s, t) => s + t, 0) / val.temps.length) * 10) / 10
+            : 0,
+        avgPrecipitation: weather ? avgArr(weather.precips) : 0,
+        avgWindSpeed: weather ? avgArr(weather.winds) : 0,
+      };
+    });
 
   // ── Per-building consumption ──
   // Source: meterBuildingWeather, filter: utility == ELECTRICITY
