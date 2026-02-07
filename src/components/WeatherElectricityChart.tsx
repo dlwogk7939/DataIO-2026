@@ -21,7 +21,7 @@ const TOOLTIP_STYLE = {
   color: "hsl(160, 10%, 88%)",
 };
 
-type XAxisVar = "temperature" | "precipitation" | "windSpeed";
+type XAxisVar = "temperature" | "windSpeed";
 type ChartType = "bar" | "trend";
 
 interface XAxisOption {
@@ -33,7 +33,6 @@ interface XAxisOption {
 
 const X_AXIS_OPTIONS: XAxisOption[] = [
   { key: "temperature", label: "Temperature", unit: "°F", titleSegment: "Temperature" },
-  { key: "precipitation", label: "Precipitation", unit: "mm", titleSegment: "Precipitation" },
   { key: "windSpeed", label: "Wind Speed", unit: "m/s", titleSegment: "Wind Speed" },
 ];
 
@@ -50,11 +49,7 @@ const WeatherElectricityChart = () => {
   const [chartType, setChartType] = useState<ChartType>("bar");
 
   const activeOption = X_AXIS_OPTIONS.find((o) => o.key === xAxisVar)!;
-  const precipTicks = [0, 0.1, 0.2, 0.3, 0.4, 0.5];
-  const isPrecip = xAxisVar === "precipitation";
-  const xAxisProps = isPrecip
-    ? { ticks: precipTicks, domain: [0, 0.5] as [number, number], type: "number" as const }
-    : {};
+
 
   const chartData = useMemo(() => {
     if (!data) return [];
@@ -63,7 +58,6 @@ const WeatherElectricityChart = () => {
     const getWeatherVal = (entry: typeof data.dailyData[0]) => {
       switch (xAxisVar) {
         case "temperature": return entry.avgTemperature;
-        case "precipitation": return entry.avgPrecipitation;
         case "windSpeed": return entry.avgWindSpeed;
       }
     };
@@ -194,7 +188,6 @@ const WeatherElectricityChart = () => {
                     fill: "hsl(220, 10%, 50%)",
                     offset: 5,
                   }}
-                  {...xAxisProps}
                 />
                 <YAxis
                   tick={{ fontSize: 10, fill: "hsl(220, 10%, 50%)" }}
@@ -238,7 +231,6 @@ const WeatherElectricityChart = () => {
                     fill: "hsl(220, 10%, 50%)",
                     offset: 5,
                   }}
-                  {...xAxisProps}
                 />
                 <YAxis
                   tick={{ fontSize: 10, fill: "hsl(220, 10%, 50%)" }}
