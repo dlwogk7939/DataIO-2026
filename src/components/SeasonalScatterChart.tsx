@@ -38,8 +38,8 @@ function getSeason(dateStr: string): string {
 const SeasonalScatterChart = () => {
   const { data } = useDataContext();
 
-  const { seasonData, regression, rSquared } = useMemo(() => {
-    if (!data) return { seasonData: { Winter: [], Spring: [], Summer: [], Fall: [] }, regression: [], rSquared: 0 };
+  const { seasonData, regression, rSquared, activeSeasons } = useMemo(() => {
+    if (!data) return { seasonData: { Winter: [], Spring: [], Summer: [], Fall: [] }, regression: [], rSquared: 0, activeSeasons: [] as string[] };
     const points = data.dailyData
       .filter((d) => d.avgTemperature !== 0 && d.totalKwh > 0)
       .map((d) => ({
@@ -78,7 +78,9 @@ const SeasonalScatterChart = () => {
       { temperature: maxT, electricity: slope * maxT + intercept, season: "Regression" },
     ];
 
-    return { seasonData: grouped, regression: regressionLine, rSquared: r2 };
+    const activeSeasons = Object.keys(grouped).filter((s) => grouped[s].length > 0);
+
+    return { seasonData: grouped, regression: regressionLine, rSquared: r2, activeSeasons };
   }, [data]);
 
   if (!data) return null;
@@ -133,12 +135,12 @@ const SeasonalScatterChart = () => {
               iconType="circle"
               iconSize={8}
             />
-            {Object.entries(SEASON_COLORS).map(([season, color]) => (
+            {activeSeasons.map((season) => (
               <Scatter
                 key={season}
                 name={season}
-                data={seasonData[season] || []}
-                fill={color}
+                data={seasonData[season]}
+                fill={SEASON_COLORS[season]}
                 fillOpacity={0.7}
               />
             ))}
