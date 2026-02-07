@@ -61,6 +61,13 @@ export interface BuildingPrediction {
   predictedMonthLabel: string;
 }
 
+export interface BuildingMonthlyKwh {
+  name: string;
+  monthKey: string;
+  monthLabel: string;
+  kwh: number;
+}
+
 export interface ParsedData {
   buildings: Building[];
   hourlyData: HourlyEntry[];
@@ -70,4 +77,5 @@ export interface ParsedData {
   summaryMetrics: SummaryMetrics;
   buildingMoMChanges: BuildingMoMChange[];
   buildingPredictions: BuildingPrediction[];
+  buildingMonthlyData: BuildingMonthlyKwh[];
 }
