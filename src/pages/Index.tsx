@@ -1,4 +1,6 @@
-import { Zap, Activity } from "lucide-react";
+import { Zap, Activity, RotateCcw } from "lucide-react";
+import { useDataContext } from "@/contexts/DataContext";
+import CsvUploader from "@/components/CsvUploader";
 import MetricCard from "@/components/MetricCard";
 import EnergyTimeSeriesChart from "@/components/EnergyTimeSeriesChart";
 import TopBuildingsChart from "@/components/TopBuildingsChart";
@@ -6,9 +8,10 @@ import TemperatureScatterChart from "@/components/TemperatureScatterChart";
 import EnergyIntensityChart from "@/components/EnergyIntensityChart";
 import DailyEnergyWeatherChart from "@/components/DailyEnergyWeatherChart";
 import InsightsPanel from "@/components/InsightsPanel";
-import { summaryMetrics } from "@/data/mockData";
 
 const Index = () => {
+  const { data, reset } = useDataContext();
+
   return (
     <div className="min-h-screen bg-background grid-bg">
       {/* Header */}
@@ -28,9 +31,18 @@ const Index = () => {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            {data && (
+              <button
+                onClick={reset}
+                className="flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              >
+                <RotateCcw className="h-3 w-3" />
+                New Data
+              </button>
+            )}
             <div className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1">
               <Activity className="h-3 w-3 text-primary animate-pulse-slow" />
-              <span className="font-mono text-xs text-primary">LIVE</span>
+              <span className="font-mono text-xs text-primary">{data ? "LIVE" : "AWAITING DATA"}</span>
             </div>
           </div>
         </div>
@@ -38,83 +50,88 @@ const Index = () => {
 
       {/* Main Content */}
       <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8">
-        {/* Title Section */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            Energy Dashboard
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Smart meter analytics for {summaryMetrics.buildingsMonitored} campus buildings · January 2025
-          </p>
-        </div>
-
-        {/* KPI Metrics */}
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <MetricCard
-            label="Total Consumption"
-            value={summaryMetrics.totalMonthlyMwh.toLocaleString()}
-            unit="MWh"
-            icon="zap"
-            trend="Monthly aggregate"
-            delay={0}
-          />
-          <MetricCard
-            label="Buildings Monitored"
-            value={summaryMetrics.buildingsMonitored}
-            icon="building"
-            trend="All campus facilities"
-            delay={100}
-          />
-          <MetricCard
-            label="Avg. Intensity"
-            value={summaryMetrics.avgIntensity}
-            unit="kWh/sqft"
-            icon="gauge"
-            trend="Normalized metric"
-            delay={200}
-          />
-          <MetricCard
-            label="Peak Demand"
-            value={summaryMetrics.peakDemandKw.toLocaleString()}
-            unit="kW"
-            icon="thermometer"
-            trend="Hourly maximum"
-            delay={300}
-          />
-        </div>
-
-        {/* Chart Grid */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          {/* Full width time series */}
-          <div className="lg:col-span-2">
-            <EnergyTimeSeriesChart />
+        {!data ? (
+          /* Upload State */
+          <div className="flex min-h-[60vh] items-center justify-center">
+            <CsvUploader />
           </div>
+        ) : (
+          /* Dashboard State */
+          <>
+            {/* Title Section */}
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+                Energy Dashboard
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Smart meter analytics for {data.summaryMetrics.buildingsMonitored} campus buildings
+              </p>
+            </div>
 
-          {/* Row 2: Top buildings + Scatter */}
-          <TopBuildingsChart />
-          <TemperatureScatterChart />
+            {/* KPI Metrics */}
+            <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <MetricCard
+                label="Total Consumption"
+                value={data.summaryMetrics.totalMonthlyMwh.toLocaleString()}
+                unit="MWh"
+                icon="zap"
+                trend="Aggregate total"
+                delay={0}
+              />
+              <MetricCard
+                label="Buildings Monitored"
+                value={data.summaryMetrics.buildingsMonitored}
+                icon="building"
+                trend="All campus facilities"
+                delay={100}
+              />
+              <MetricCard
+                label="Avg. Intensity"
+                value={data.summaryMetrics.avgIntensity}
+                unit="kWh/sqft"
+                icon="gauge"
+                trend="Normalized metric"
+                delay={200}
+              />
+              <MetricCard
+                label="Peak Demand"
+                value={data.summaryMetrics.peakDemandKw.toLocaleString()}
+                unit="kW"
+                icon="thermometer"
+                trend="Hourly maximum"
+                delay={300}
+              />
+            </div>
 
-          {/* Row 3: Intensity + Daily overlay */}
-          <EnergyIntensityChart />
-          <DailyEnergyWeatherChart />
+            {/* Chart Grid */}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="lg:col-span-2">
+                <EnergyTimeSeriesChart />
+              </div>
+              <TopBuildingsChart />
+              <TemperatureScatterChart />
+              <EnergyIntensityChart />
+              <DailyEnergyWeatherChart />
+              <div className="lg:col-span-2">
+                <InsightsPanel />
+              </div>
+            </div>
 
-          {/* Full width insights */}
-          <div className="lg:col-span-2">
-            <InsightsPanel />
-          </div>
-        </div>
-
-        {/* Footer */}
-        <footer className="mt-8 border-t border-border pt-4 pb-6">
-          <div className="flex flex-col items-center justify-between gap-2 text-[11px] text-muted-foreground sm:flex-row">
-            <p>
-              DATAIO · Campus Energy Analytics for Efficiency & Sustainability
-            </p>
-            <p className="font-mono">
-              Data period: Jan 1 – Jan 30, 2025
-            </p>
-          </div>
-        </footer>
+            {/* Footer */}
+            <footer className="mt-8 border-t border-border pt-4 pb-6">
+              <div className="flex flex-col items-center justify-between gap-2 text-[11px] text-muted-foreground sm:flex-row">
+                <p>
+                  DATAIO · Campus Energy Analytics for Efficiency & Sustainability
+                </p>
+                <p className="font-mono">
+                  {data.dailyData.length > 0
+                    ? `Data period: ${data.dailyData[0].label} – ${data.dailyData[data.dailyData.length - 1].label}`
+                    : "No data period available"}
+                </p>
+              </div>
+            </footer>
+          </>
+        )}
       </main>
     </div>
   );
