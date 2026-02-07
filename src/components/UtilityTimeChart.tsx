@@ -93,20 +93,52 @@ const UtilityTimeChart = () => {
     // Determine unit from data
     const detectedUnit = filtered[0].unit || "kWh";
 
-    // Compute % change from previous period
-    const result = filtered.map((entry, i) => {
-      const prev = i > 0 ? filtered[i - 1].totalUsage : null;
-      const pctChange = prev && prev > 0
-        ? Math.round(((entry.totalUsage - prev) / prev) * 1000) / 10
-        : null;
+    // Determine the year to display (use the year with the most data points)
+    const yearCounts = new Map<number, number>();
+    for (const entry of filtered) {
+      const y = parseInt(entry.monthKey.split("-")[0], 10);
+      yearCounts.set(y, (yearCounts.get(y) || 0) + 1);
+    }
+    const primaryYear = Array.from(yearCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0]
+      ?? new Date().getFullYear();
+
+    // Build a lookup of existing data by monthKey
+    const dataByMonthKey = new Map(filtered.map((d) => [d.monthKey, d]));
+
+    // Generate all 12 months for the primary year
+    const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const fullYear = MONTH_NAMES.map((_, i) => {
+      const mm = String(i + 1).padStart(2, "0");
+      const monthKey = `${primaryYear}-${mm}`;
+      const monthLabel = `${MONTH_NAMES[i]} ${primaryYear}`;
+      const existing = dataByMonthKey.get(monthKey);
       return {
-        ...entry,
-        pctChange,
-        displayUsage: entry.totalUsage,
+        utility: activeUtility,
+        monthKey,
+        monthLabel,
+        totalUsage: existing ? existing.totalUsage : 0,
+        unit: detectedUnit,
+        hasData: !!existing,
       };
     });
 
-    const max = Math.max(...result.map((d) => d.displayUsage));
+    // Compute % change from previous period (only between months with data)
+    let prevUsage: number | null = null;
+    const result = fullYear.map((entry) => {
+      let pctChange: number | null = null;
+      if (entry.hasData && prevUsage !== null && prevUsage > 0) {
+        pctChange = Math.round(((entry.totalUsage - prevUsage) / prevUsage) * 1000) / 10;
+      }
+      if (entry.hasData) prevUsage = entry.totalUsage;
+      return {
+        ...entry,
+        pctChange,
+        displayUsage: entry.hasData ? entry.totalUsage : 0,
+        lineUsage: entry.hasData ? entry.totalUsage : null,
+      };
+    });
+
+    const max = Math.max(...result.filter((d) => d.hasData).map((d) => d.displayUsage), 0);
 
     return { chartData: result, unit: detectedUnit, maxUsage: max };
   }, [data, activeUtility]);
@@ -125,6 +157,17 @@ const UtilityTimeChart = () => {
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
+    if (!d.hasData) {
+      return (
+        <div style={TOOLTIP_STYLE} className="px-3 py-2.5">
+          <p className="font-semibold text-xs mb-1" style={{ color }}>
+            {activeUtility}
+          </p>
+          <p className="text-[11px] text-muted-foreground mb-1.5">{d.monthLabel}</p>
+          <p className="text-xs text-muted-foreground italic">No data available</p>
+        </div>
+      );
+    }
     return (
       <div style={TOOLTIP_STYLE} className="px-3 py-2.5">
         <p className="font-semibold text-xs mb-1" style={{ color }}>
@@ -248,9 +291,25 @@ const UtilityTimeChart = () => {
                 <Tooltip content={<CustomTooltip />} />
                 <Bar
                   dataKey="displayUsage"
-                  fill={color}
                   radius={[4, 4, 0, 0]}
+                  fill={color}
                   fillOpacity={0.85}
+                  shape={(props: any) => {
+                    const { x, y, width, height, payload } = props;
+                    if (!payload?.hasData) return null;
+                    return (
+                      <rect
+                        x={x}
+                        y={y}
+                        width={width}
+                        height={height}
+                        fill={color}
+                        fillOpacity={0.85}
+                        rx={4}
+                        ry={4}
+                      />
+                    );
+                  }}
                 />
               </BarChart>
             ) : (
@@ -289,14 +348,24 @@ const UtilityTimeChart = () => {
                 <Tooltip content={<CustomTooltip />} />
                 <Line
                   type="monotone"
-                  dataKey="displayUsage"
+                  dataKey="lineUsage"
                   stroke={color}
                   strokeWidth={2.5}
-                  dot={{
-                    r: 3,
-                    fill: color,
-                    stroke: "hsl(220, 18%, 10%)",
-                    strokeWidth: 2,
+                  connectNulls={false}
+                  dot={(props: any) => {
+                    const { cx, cy, payload } = props;
+                    if (!payload?.hasData) return <g key={props.key} />;
+                    return (
+                      <circle
+                        key={props.key}
+                        cx={cx}
+                        cy={cy}
+                        r={3}
+                        fill={color}
+                        stroke="hsl(220, 18%, 10%)"
+                        strokeWidth={2}
+                      />
+                    );
                   }}
                   activeDot={{ r: 5, strokeWidth: 2 }}
                 />
@@ -317,7 +386,7 @@ const UtilityTimeChart = () => {
             {activeUtility}
           </span>
           <span className="font-mono">
-            {chartData.length} months · {unit}
+            {chartData.filter((d) => d.hasData).length} of 12 months · {unit}
           </span>
         </div>
 
