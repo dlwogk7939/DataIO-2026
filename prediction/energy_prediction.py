@@ -12,6 +12,7 @@ Prereqs:
 Run:
   python3 energy_prediction.py
   python3 energy_prediction.py --building-name "Thompson Library"
+  python3 energy_prediction.py --train-five-buildings
   python3 energy_prediction.py --all-buildings
   python3 energy_prediction.py --predict data/new_daily_weather.csv --out data/predictions.csv
 """
@@ -28,7 +29,9 @@ DEFAULT_BUILDING_NAME = "Thompson Library"
 UTILITY_FILTER = "ELECTRICITY"
 AGGREGATE_BY_DATE = True
 AGGREGATE_TARGET_AS_MEAN = False
-EXCLUDE_SIMSCODES = {"79"}  # OSU Electric Substation (buildingnumber 079)
+TEST_WINDOW_DAYS = 7
+# Use core semester months for evaluation split to avoid break periods.
+SEMESTER_TEST_MONTHS = {2, 3, 4, 9, 10}
 
 FEATURE_COLS = [
     "precipitation",
@@ -37,6 +40,17 @@ FEATURE_COLS = [
 ]
 BUILDING_COL = "buildingnumber"
 TARGET_COL = "readingwindowsum"
+TARGET_BUILDINGS = [
+    ("Thompson Library", "50"),
+    ("RPAC", "246"),
+    ("Knowlton Hall", "17"),
+    ("Hitchcock Hall", "274"),
+    ("Ohio Union", "161"),
+]
+BUILDING_NAME_ALIASES = {
+    "rpac": "Recreation and Physical Activity Center",
+    "dreese lab": "Dreese Laboratories",
+}
 
 
 def normalize_simscode(value) -> str:
@@ -60,6 +74,13 @@ def normalize_simscode(value) -> str:
         return digits
 
 
+def canonicalize_building_name(building_name: str) -> str:
+    normalized = building_name.strip()
+    if not normalized:
+        return normalized
+    return BUILDING_NAME_ALIASES.get(normalized.lower(), normalized)
+
+
 def resolve_building_numbers(building_name: str) -> list:
     if not building_name:
         return []
@@ -73,7 +94,8 @@ def resolve_building_numbers(building_name: str) -> list:
     buildings["buildingnumber"] = buildings["buildingnumber"].astype(str).str.strip()
     buildings["buildingnumber_norm"] = buildings["buildingnumber"].map(normalize_simscode)
 
-    name_lower = building_name.strip().lower()
+    canonical_name = canonicalize_building_name(building_name)
+    name_lower = canonical_name.lower()
     matches = buildings[buildings["buildingname"].str.lower().str.contains(name_lower, na=False)]
     if matches.empty:
         raise ValueError(f"No building matches '{building_name}' in metadata.")
@@ -94,6 +116,10 @@ def resolve_building_numbers(building_name: str) -> list:
     return nums
 
 
+def normalize_building_numbers(building_numbers) -> list:
+    return [n for n in (normalize_simscode(v) for v in building_numbers) if n]
+
+
 def get_feature_cols(by_building: bool) -> list:
     cols = list(FEATURE_COLS)
     if by_building:
@@ -101,7 +127,20 @@ def get_feature_cols(by_building: bool) -> list:
     return cols
 
 
-def load_data(by_building: bool = False, building_name: Optional[str] = DEFAULT_BUILDING_NAME):
+def select_test_dates(unique_dates: pd.DatetimeIndex) -> pd.DatetimeIndex:
+    semester_dates = unique_dates[unique_dates.month.isin(sorted(SEMESTER_TEST_MONTHS))]
+    if len(semester_dates) >= TEST_WINDOW_DAYS:
+        return semester_dates[-TEST_WINDOW_DAYS:]
+    if len(unique_dates) >= TEST_WINDOW_DAYS:
+        return unique_dates[-TEST_WINDOW_DAYS:]
+    return unique_dates[-1:]
+
+
+def load_data(
+    by_building: bool = False,
+    building_name: Optional[str] = DEFAULT_BUILDING_NAME,
+    building_numbers: Optional[list] = None,
+):
     if not os.path.exists(FEATURE_PATH):
         raise FileNotFoundError(
             f"Missing {FEATURE_PATH}. Build it with: python3 data_clean.py"
@@ -118,15 +157,16 @@ def load_data(by_building: bool = False, building_name: Optional[str] = DEFAULT_
 
     if "simscode" in df.columns:
         simscode_norm = df["simscode"].map(normalize_simscode)
-        if EXCLUDE_SIMSCODES:
-            keep_mask = ~simscode_norm.isin(EXCLUDE_SIMSCODES)
-            df = df[keep_mask].copy()
-            simscode_norm = simscode_norm[keep_mask]
-        if building_name:
-            building_numbers = resolve_building_numbers(building_name)
-            building_mask = simscode_norm.isin(building_numbers)
+        if building_numbers:
+            requested_numbers = normalize_building_numbers(building_numbers)
+        elif building_name:
+            requested_numbers = resolve_building_numbers(building_name)
+        else:
+            requested_numbers = []
+        if requested_numbers:
+            building_mask = simscode_norm.isin(requested_numbers)
             df = df[building_mask].copy()
-    elif building_name or EXCLUDE_SIMSCODES:
+    elif building_name or building_numbers:
         raise ValueError("Missing simscode column required for building filtering.")
 
     if TARGET_COL in df.columns:
@@ -169,17 +209,17 @@ def load_data(by_building: bool = False, building_name: Optional[str] = DEFAULT_
     X = df[feature_cols]
     y = df[TARGET_COL]
 
-    # Time-based split: last 7 unique dates as test
+    # Time-based split: last semester-window dates as test
     if "date" in df.columns:
-        unique_dates = df["date"].dropna().sort_values().unique()
-        split_dates = unique_dates[-7:] if len(unique_dates) > 7 else unique_dates[-1:]
+        unique_dates = pd.DatetimeIndex(df["date"].dropna().sort_values().unique())
+        split_dates = select_test_dates(unique_dates)
         test_mask = df["date"].isin(split_dates)
         X_train = X[~test_mask]
         X_test = X[test_mask]
         y_train = y[~test_mask]
         y_test = y[test_mask]
     else:
-        split_idx = max(len(df) - 7, 1)
+        split_idx = max(len(df) - TEST_WINDOW_DAYS, 1)
         X_train = X.iloc[:split_idx]
         X_test = X.iloc[split_idx:]
         y_train = y.iloc[:split_idx]
@@ -188,7 +228,11 @@ def load_data(by_building: bool = False, building_name: Optional[str] = DEFAULT_
     return X_train, X_test, y_train, y_test, df
 
 
-def train_model(by_building: bool = False, building_name: Optional[str] = DEFAULT_BUILDING_NAME):
+def train_model(
+    by_building: bool = False,
+    building_name: Optional[str] = DEFAULT_BUILDING_NAME,
+    building_numbers: Optional[list] = None,
+):
     from sklearn.pipeline import Pipeline
     from sklearn.compose import ColumnTransformer
     from sklearn.preprocessing import StandardScaler
@@ -198,6 +242,7 @@ def train_model(by_building: bool = False, building_name: Optional[str] = DEFAUL
     X_train, X_test, y_train, y_test, _ = load_data(
         by_building=by_building,
         building_name=building_name,
+        building_numbers=building_numbers,
     )
 
     if by_building:
@@ -227,7 +272,7 @@ def train_model(by_building: bool = False, building_name: Optional[str] = DEFAUL
     return model, X_test, y_test
 
 
-def evaluate_model(model, X_test, y_test):
+def compute_metrics(model, X_test, y_test):
     from sklearn.metrics import mean_absolute_error, root_mean_squared_error
 
     preds = model.predict(X_test)
@@ -235,10 +280,16 @@ def evaluate_model(model, X_test, y_test):
     rmse = root_mean_squared_error(y_test, preds)
     mean_target = y_test.mean()
     mae_pct = (mae / mean_target) * 100 if mean_target != 0 else float("nan")
+    return mae, rmse, mae_pct
+
+
+def evaluate_model(model, X_test, y_test):
+    mae, rmse, mae_pct = compute_metrics(model, X_test, y_test)
 
     print("Test MAE:", round(mae, 3))
     print("Test RMSE:", round(rmse, 3))
     print("MAE % of mean target:", round(mae_pct, 3), "%")
+    return mae, rmse, mae_pct
 
 
 def resolve_path(path: str) -> str:
@@ -278,6 +329,21 @@ def predict_from_weather(model, weather_path, out_path, by_building: bool = Fals
     print(f"Wrote predictions to {out_path}")
 
 
+def train_five_buildings():
+    print("Training one model per building:")
+    for idx, (building_name, building_number) in enumerate(TARGET_BUILDINGS, start=1):
+        model, X_test, y_test = train_model(
+            by_building=False,
+            building_name=None,
+            building_numbers=[building_number],
+        )
+        mae, rmse, mae_pct = compute_metrics(model, X_test, y_test)
+        print(
+            f"{idx}. {building_name} ({building_number}) | MAE: {mae:.3f} | RMSE: {rmse:.3f} | "
+            f"MAE %: {mae_pct:.3f}%"
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(description="Daily electricity usage model")
     parser.add_argument(
@@ -311,9 +377,20 @@ def main():
         action="store_true",
         help="Train/predict per building (requires buildingnumber column).",
     )
+    parser.add_argument(
+        "--train-five-buildings",
+        action="store_true",
+        help="Train and evaluate separate models for 5 target buildings.",
+    )
     args = parser.parse_args()
 
     try:
+        if args.train_five_buildings:
+            if args.predict_path:
+                raise ValueError("--predict cannot be used with --train-five-buildings.")
+            train_five_buildings()
+            return
+
         building_name = None if args.all_buildings else args.building_name
         if building_name is not None:
             building_name = building_name.strip()
