@@ -72,7 +72,7 @@ const WeatherHeatmapChart = () => {
 
   return (
     <div className="rounded-lg border border-border bg-card p-5 animate-fade-in" style={{ animationDelay: "1600ms" }}>
-      <div className="mb-4">
+      <div className="mb-4 text-center">
         <h3 className="text-sm font-semibold text-foreground">
           Weather Sensitivity Heatmap
         </h3>
