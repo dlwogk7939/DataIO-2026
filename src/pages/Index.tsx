@@ -2,13 +2,14 @@ import { Zap, Activity, RotateCcw } from "lucide-react";
 import { useDataContext } from "@/contexts/DataContext";
 import CsvUploader from "@/components/CsvUploader";
 import MetricCard from "@/components/MetricCard";
-import EnergyTimeSeriesChart from "@/components/EnergyTimeSeriesChart";
-import TopBuildingsChart from "@/components/TopBuildingsChart";
-import TemperatureScatterChart from "@/components/TemperatureScatterChart";
-import EnergyIntensityChart from "@/components/EnergyIntensityChart";
-import DailyEnergyWeatherChart from "@/components/DailyEnergyWeatherChart";
+import ParetoChart from "@/components/ParetoChart";
+import IntensityByTypeChart from "@/components/IntensityByTypeChart";
+import SeasonalScatterChart from "@/components/SeasonalScatterChart";
+import MonthlyTrendChart from "@/components/MonthlyTrendChart";
+import MoMPercentChart from "@/components/MoMPercentChart";
+import ForecastBaselineChart from "@/components/ForecastBaselineChart";
+import ActionPriorityChart from "@/components/ActionPriorityChart";
 import InsightsPanel from "@/components/InsightsPanel";
-import PredictedUsageChart from "@/components/PredictedUsageChart";
 
 const Index = () => {
   const { data, reset } = useDataContext();
@@ -52,20 +53,18 @@ const Index = () => {
       {/* Main Content */}
       <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8">
         {!data ? (
-          /* Upload State */
           <div className="flex min-h-[60vh] items-center justify-center">
             <CsvUploader />
           </div>
         ) : (
-          /* Dashboard State */
           <>
             {/* Title Section */}
             <div className="mb-6">
               <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                Energy Dashboard
+                Energy Analytics Dashboard
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                Smart meter analytics for {data.summaryMetrics.buildingsMonitored} campus buildings
+                Insight-first analysis of {data.summaryMetrics.buildingsMonitored} campus buildings — identifying inefficiencies, trends, and action priorities
               </p>
             </div>
 
@@ -104,18 +103,32 @@ const Index = () => {
               />
             </div>
 
-            {/* Chart Grid */}
+            {/* Chart Grid — Insight-first layout */}
             <div className="grid gap-4 lg:grid-cols-2">
+              {/* 1. Pareto — full width */}
               <div className="lg:col-span-2">
-                <EnergyTimeSeriesChart />
+                <ParetoChart />
               </div>
-              <TopBuildingsChart />
-              <TemperatureScatterChart />
-              <EnergyIntensityChart />
-              <DailyEnergyWeatherChart />
+
+              {/* 2. Intensity by Type + Seasonal Scatter */}
+              <IntensityByTypeChart />
+              <SeasonalScatterChart />
+
+              {/* 3. Monthly Trend + MoM % Change */}
+              <MonthlyTrendChart />
+              <MoMPercentChart />
+
+              {/* 4. Forecast — full width */}
               <div className="lg:col-span-2">
-                <PredictedUsageChart />
+                <ForecastBaselineChart />
               </div>
+
+              {/* 5. Executive Priority — full width */}
+              <div className="lg:col-span-2">
+                <ActionPriorityChart />
+              </div>
+
+              {/* 6. Insights Panel — full width */}
               <div className="lg:col-span-2">
                 <InsightsPanel />
               </div>

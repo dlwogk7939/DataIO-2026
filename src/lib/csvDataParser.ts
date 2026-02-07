@@ -35,6 +35,7 @@ import type {
   SummaryMetrics,
   BuildingMoMChange,
   BuildingPrediction,
+  BuildingMonthlyKwh,
 } from "./csvParser";
 
 // ── Required file definitions ──────────────────────────────────────────────
@@ -261,11 +262,20 @@ export async function parseAllCsvFiles(
     });
   }
 
+  function classifyBuildingType(n: string): string {
+    const lower = n.toLowerCase();
+    if (/substation|plant|utility|central|chiller|boiler|power|service|garage|parking|tunnel|steam/.test(lower)) return "Utility";
+    if (/lab|research|science|chemistry|physics|biology|engineering|medical|hospital|veterinar/.test(lower)) return "Labs";
+    if (/residence|dorm|living|apartment/.test(lower)) return "Residential";
+    if (/stadium|arena|recreation|gym|athletic|field|wellness|aquatic|ice|golf/.test(lower)) return "Athletics";
+    return "Academic";
+  }
+
   const buildings: Building[] = Array.from(siteMap.entries()).map(([name, info]) => ({
     id: info.code || name,
     name,
     sqft: info.grossarea,
-    type: "Building",
+    type: classifyBuildingType(name),
   }));
 
   // ── Hourly aggregation ──
@@ -476,6 +486,17 @@ export async function parseAllCsvFiles(
     }
   }
 
+  // ── Monthly data per building ──
+  const buildingMonthlyData: BuildingMonthlyKwh[] = [];
+  for (const [buildingname, months] of buildingMonthMap) {
+    const sortedMonths = Array.from(months.entries()).sort(([a], [b]) => a.localeCompare(b));
+    for (const [monthKey, kwh] of sortedMonths) {
+      const [yy, mm] = monthKey.split("-").map(Number);
+      const ml = new Date(yy, mm - 1).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+      buildingMonthlyData.push({ name: buildingname, monthKey, monthLabel: ml, kwh: Math.round(kwh) });
+    }
+  }
+
   // ── Next-month predictions (linear extrapolation) ──
   const buildingPredictions: BuildingPrediction[] = [];
   for (const [buildingname, months] of buildingMonthMap) {
@@ -520,6 +541,7 @@ export async function parseAllCsvFiles(
       summaryMetrics,
       buildingMoMChanges,
       buildingPredictions,
+      buildingMonthlyData,
     },
     info,
   };
