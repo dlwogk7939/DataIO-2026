@@ -116,12 +116,13 @@ const SeasonalScatterChart = () => {
               tickLine={false}
               axisLine={false}
               tickFormatter={(v: number) => {
-                if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-                if (v >= 1_000) return `${(v / 1_000).toFixed(0)}k`;
+                if (Math.abs(v) >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(v % 1_000_000_000 === 0 ? 0 : 1)}B`;
+                if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(v % 1_000_000 === 0 ? 0 : 1)}M`;
+                if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(v % 1_000 === 0 ? 0 : 1)}K`;
                 return String(v);
               }}
-              width={60}
-              label={{ value: "Daily Electricity (kWh)", angle: -90, position: "insideLeft", fontSize: 10, fill: "hsl(220, 10%, 50%)", dx: -25 }}
+              width={55}
+              label={{ value: "Daily Electricity (kWh)", angle: -90, position: "insideLeft", fontSize: 10, fill: "hsl(220, 10%, 50%)", dx: -20 }}
             />
             <ZAxis range={[30, 30]} />
             <Tooltip

@@ -78,7 +78,7 @@ const MoMPercentChart = () => {
           <BarChart
             data={sorted}
             layout="vertical"
-            margin={{ top: 0, right: 20, left: 0, bottom: 0 }}
+            margin={{ top: 0, right: 20, left: 0, bottom: 20 }}
           >
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(220, 14%, 18%)" horizontal={false} />
             <XAxis

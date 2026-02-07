@@ -74,9 +74,9 @@ const MonthlyTrendChart = () => {
           Monthly electricity (MWh) vs average temperature — structural baseload exceeds weather-driven demand
         </p>
       </div>
-      <div className="h-[280px]">
+      <div className="h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={monthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+          <ComposedChart data={monthlyData} margin={{ top: 5, right: 10, left: 15, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(220, 14%, 18%)" />
             <XAxis
               dataKey="month"
@@ -89,7 +89,13 @@ const MonthlyTrendChart = () => {
               tick={{ fontSize: 10, fill: "hsl(220, 10%, 50%)" }}
               tickLine={false}
               axisLine={false}
-              label={{ value: "MWh", angle: -90, position: "insideLeft", fontSize: 10, fill: "hsl(220, 10%, 50%)", offset: 10 }}
+              width={60}
+              tickFormatter={(v: number) => {
+                if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+                if (v >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
+                return String(v);
+              }}
+              label={{ value: "MWh", angle: -90, position: "insideLeft", fontSize: 10, fill: "hsl(220, 10%, 50%)", dx: -10 }}
             />
             <YAxis
               yAxisId="temp"

@@ -8,7 +8,7 @@ import SeasonalScatterChart from "@/components/SeasonalScatterChart";
 import MonthlyTrendChart from "@/components/MonthlyTrendChart";
 import MoMPercentChart from "@/components/MoMPercentChart";
 import ForecastBaselineChart from "@/components/ForecastBaselineChart";
-import ActionPriorityChart from "@/components/ActionPriorityChart";
+import WeatherElectricityChart from "@/components/WeatherElectricityChart";
 import InsightsPanel from "@/components/InsightsPanel";
 
 const Index = () => {
@@ -123,9 +123,9 @@ const Index = () => {
                 <ForecastBaselineChart />
               </div>
 
-              {/* 5. Executive Priority — full width */}
+              {/* 5. Weather vs Electricity — full width */}
               <div className="lg:col-span-2">
-                <ActionPriorityChart />
+                <WeatherElectricityChart />
               </div>
 
               {/* 6. Insights Panel — full width */}
