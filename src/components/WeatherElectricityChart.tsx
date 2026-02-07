@@ -53,7 +53,7 @@ const WeatherElectricityChart = () => {
   const isPrecip = xAxisVar === "precipitation";
   const precipTicks = [0, 0.1, 0.2, 0.3, 0.4, 0.5];
   const xAxisProps = isPrecip
-    ? { ticks: precipTicks, domain: [0, 0.5] as [number, number], type: "number" as const }
+    ? { ticks: precipTicks, domain: [-0.05, 0.55] as [number, number], type: "number" as const }
     : {};
 
 
