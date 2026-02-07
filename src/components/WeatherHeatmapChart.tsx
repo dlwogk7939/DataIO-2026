@@ -81,7 +81,7 @@ const WeatherHeatmapChart = () => {
         </p>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto flex justify-center">
         <div className="inline-block">
           {/* Y-axis label */}
           <div className="flex items-start">
