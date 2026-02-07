@@ -50,6 +50,11 @@ const WeatherElectricityChart = () => {
   const [chartType, setChartType] = useState<ChartType>("bar");
 
   const activeOption = X_AXIS_OPTIONS.find((o) => o.key === xAxisVar)!;
+  const precipTicks = [0, 0.1, 0.2, 0.3, 0.4, 0.5];
+  const isPrecip = xAxisVar === "precipitation";
+  const xAxisProps = isPrecip
+    ? { ticks: precipTicks, domain: [0, 0.5] as [number, number], type: "number" as const }
+    : {};
 
   const chartData = useMemo(() => {
     if (!data) return [];
@@ -189,6 +194,7 @@ const WeatherElectricityChart = () => {
                     fill: "hsl(220, 10%, 50%)",
                     offset: 5,
                   }}
+                  {...xAxisProps}
                 />
                 <YAxis
                   tick={{ fontSize: 10, fill: "hsl(220, 10%, 50%)" }}
@@ -232,6 +238,7 @@ const WeatherElectricityChart = () => {
                     fill: "hsl(220, 10%, 50%)",
                     offset: 5,
                   }}
+                  {...xAxisProps}
                 />
                 <YAxis
                   tick={{ fontSize: 10, fill: "hsl(220, 10%, 50%)" }}
