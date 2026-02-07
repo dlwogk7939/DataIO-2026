@@ -4,12 +4,24 @@
  * Parses the five required CSV files and builds a unified ParsedData object
  * that all visualization components consume.
  *
- * Required files:
- *  1. meter_prememerge_selected.csv
+ * Required files & authoritative column schemas:
+ *  1. meter_premerge_selected.csv
+ *     → simscode, utility, readingtime, readingunits, readingunitsdisplay, readingwindowsum
  *  2. meter_building_merged.csv
- *  3. meter_building_weather_merged.csv
+ *     → simscode, utility, readingtime, readingunits, readingunitsdisplay, readingwindowsum,
+ *       buildingnumber, buildingname, campusname, city, latitude, longitude
+ *  3. meter_building_weather_merged.csv  (PRIMARY)
+ *     → simscode, utility, readingtime, readingunits, readingunitsdisplay, readingwindowsum,
+ *       buildingnumber, buildingname, campusname, address, city, state, postalcode, county,
+ *       formalname, alsoknownas, grossarea, floorsaboveground, floorsbelowground,
+ *       constructiondate, latitude, longitude,
+ *       date, temperature_2m, shortwave_radiation, relative_humidity_2m, precipitation,
+ *       wind_speed_10m, cloud_cover, cdd, hdd
  *  4. building_metadata_selected.csv
+ *     → buildingnumber, buildingname, campusname, city, latitude, longitude
  *  5. weather_daily_selected.csv
+ *     → date, temperature_2m, shortwave_radiation, relative_humidity_2m, precipitation,
+ *       wind_speed_10m, cloud_cover, cdd, hdd
  */
 
 import Papa from "papaparse";
@@ -28,7 +40,7 @@ import type {
 // ── Required file definitions ──────────────────────────────────────────────
 
 export const REQUIRED_FILES = [
-  "meter_prememerge_selected.csv",
+  "meter_premerge_selected.csv",
   "meter_building_merged.csv",
   "meter_building_weather_merged.csv",
   "building_metadata_selected.csv",
@@ -38,7 +50,7 @@ export const REQUIRED_FILES = [
 export type RequiredFileName = (typeof REQUIRED_FILES)[number];
 
 export const FILE_KEYS: Record<RequiredFileName, string> = {
-  "meter_prememerge_selected.csv": "meterPrememerge",
+  "meter_premerge_selected.csv": "meterPremerge",
   "meter_building_merged.csv": "meterBuilding",
   "meter_building_weather_merged.csv": "meterBuildingWeather",
   "building_metadata_selected.csv": "buildingMetadata",
@@ -46,11 +58,33 @@ export const FILE_KEYS: Record<RequiredFileName, string> = {
 };
 
 export const FILE_DESCRIPTIONS: Record<RequiredFileName, string> = {
-  "meter_prememerge_selected.csv": "Raw smart meter readings",
+  "meter_premerge_selected.csv": "Raw smart meter readings",
   "meter_building_merged.csv": "Meter data merged with building info",
   "meter_building_weather_merged.csv": "Meter + building + weather data",
   "building_metadata_selected.csv": "Building metadata (area, type)",
   "weather_daily_selected.csv": "Daily weather observations",
+};
+
+// ── Expected columns per file (for validation) ────────────────────────────
+
+const EXPECTED_COLUMNS: Record<RequiredFileName, string[]> = {
+  "meter_premerge_selected.csv": [
+    "simscode", "utility", "readingtime", "readingunits", "readingunitsdisplay", "readingwindowsum",
+  ],
+  "meter_building_merged.csv": [
+    "simscode", "utility", "readingtime", "readingunits", "readingunitsdisplay", "readingwindowsum",
+    "buildingnumber", "buildingname", "campusname", "city", "latitude", "longitude",
+  ],
+  "meter_building_weather_merged.csv": [
+    "simscode", "utility", "readingtime", "readingunits", "readingunitsdisplay", "readingwindowsum",
+    "buildingnumber", "buildingname", "grossarea", "temperature_2m",
+  ],
+  "building_metadata_selected.csv": [
+    "buildingnumber", "buildingname",
+  ],
+  "weather_daily_selected.csv": [
+    "date", "temperature_2m",
+  ],
 };
 
 // ── CSV file info ──────────────────────────────────────────────────────────
@@ -73,7 +107,7 @@ function parseCsvFile(file: File): Promise<{ rows: Record<string, unknown>[]; co
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      dynamicTyping: true,
+      dynamicTyping: false, // we handle numeric conversion explicitly
       complete: (results) => {
         const columns = results.meta.fields ?? [];
         const rows = results.data as Record<string, unknown>[];
@@ -84,20 +118,42 @@ function parseCsvFile(file: File): Promise<{ rows: Record<string, unknown>[]; co
   });
 }
 
+const NUMERIC_FIELDS = new Set([
+  "readingwindowsum", "grossarea", "temperature_2m", "shortwave_radiation",
+  "relative_humidity_2m", "precipitation", "wind_speed_10m", "cloud_cover",
+  "cdd", "hdd", "latitude", "longitude", "floorsaboveground", "floorsbelowground",
+]);
+
 function toNum(val: unknown): number {
   if (typeof val === "number" && !isNaN(val)) return val;
+  if (val == null || val === "") return 0;
   const n = Number(val);
   return isNaN(n) ? 0 : n;
 }
 
 function toStr(val: unknown): string {
-  return val == null ? "" : String(val);
+  return val == null ? "" : String(val).trim();
 }
 
 function toDate(val: unknown): Date | null {
   if (val instanceof Date) return val;
+  if (val == null || val === "") return null;
   const d = new Date(String(val));
   return isNaN(d.getTime()) ? null : d;
+}
+
+/** Validate that a parsed CSV contains the minimum required columns */
+function validateColumns(
+  fileName: RequiredFileName,
+  actualColumns: string[],
+): string | null {
+  const expected = EXPECTED_COLUMNS[fileName];
+  const lower = new Set(actualColumns.map((c) => c.toLowerCase()));
+  const missing = expected.filter((c) => !lower.has(c));
+  if (missing.length > 0) {
+    return `${fileName} is missing required columns: ${missing.join(", ")}. Found columns: ${actualColumns.join(", ")}`;
+  }
+  return null;
 }
 
 // ── Main parse function ────────────────────────────────────────────────────
@@ -118,7 +174,7 @@ export async function parseAllCsvFiles(
     buildingMeta,
     weatherDaily,
   ] = await Promise.all([
-    parseCsvFile(files["meter_prememerge_selected.csv"]),
+    parseCsvFile(files["meter_premerge_selected.csv"]),
     parseCsvFile(files["meter_building_merged.csv"]),
     parseCsvFile(files["meter_building_weather_merged.csv"]),
     parseCsvFile(files["building_metadata_selected.csv"]),
@@ -128,7 +184,7 @@ export async function parseAllCsvFiles(
   // Build info for debug panel
   const info: AllCsvInfo = {};
   const allParsed = [
-    { key: "meterPrememerge", file: files["meter_prememerge_selected.csv"], parsed: meterPremerge },
+    { key: "meterPremerge", file: files["meter_premerge_selected.csv"], parsed: meterPremerge },
     { key: "meterBuilding", file: files["meter_building_merged.csv"], parsed: meterBuilding },
     { key: "meterBuildingWeather", file: files["meter_building_weather_merged.csv"], parsed: meterBuildingWeather },
     { key: "buildingMetadata", file: files["building_metadata_selected.csv"], parsed: buildingMeta },
@@ -147,62 +203,87 @@ export async function parseAllCsvFiles(
     );
   }
 
-  // ── Use meter_building_weather_merged as the primary data source ──
-  // It should contain: readingtime, readingvalue, sitename, temperature_2m, grossarea, kwh_per_sqft, etc.
+  // ── Validate columns ──
+  const validationErrors: string[] = [];
+  const fileEntries: [RequiredFileName, { rows: Record<string, unknown>[]; columns: string[] }][] = [
+    ["meter_premerge_selected.csv", meterPremerge],
+    ["meter_building_merged.csv", meterBuilding],
+    ["meter_building_weather_merged.csv", meterBuildingWeather],
+    ["building_metadata_selected.csv", buildingMeta],
+    ["weather_daily_selected.csv", weatherDaily],
+  ];
+  for (const [name, parsed] of fileEntries) {
+    const err = validateColumns(name, parsed.columns);
+    if (err) validationErrors.push(err);
+  }
+  if (validationErrors.length > 0) {
+    throw new Error(validationErrors.join("\n"));
+  }
+
+  // ── Use meter_building_weather_merged as the PRIMARY data source ──
+  // Columns: readingtime, readingwindowsum, buildingname, grossarea, temperature_2m, utility, etc.
   const primaryRows = meterBuildingWeather.rows;
 
-  // Also build a building metadata lookup from building_metadata_selected.csv
-  const metaMap = new Map<string, { sqft: number; type: string }>();
+  // Build a building metadata lookup from building_metadata_selected.csv
+  const metaMap = new Map<string, { grossarea: number }>();
   for (const row of buildingMeta.rows) {
-    const name = toStr(row["sitename"] ?? row["SiteName"] ?? row["site_name"] ?? row["name"] ?? "");
+    const name = toStr(row["buildingname"]);
     if (!name) continue;
+    // building_metadata_selected may not have grossarea, fallback to 0
     metaMap.set(name, {
-      sqft: toNum(row["grossarea"] ?? row["GrossArea"] ?? row["gross_area"] ?? row["sqft"] ?? 0),
-      type: toStr(row["building_type"] ?? row["BuildingType"] ?? row["type"] ?? "Building"),
+      grossarea: toNum(row["grossarea"]),
     });
   }
 
-  // Filter to electricity rows
+  // Filter to ELECTRICITY rows from primary dataset
   const elecRows = primaryRows.filter((r) => {
-    const utility = toStr(r["utility"] ?? r["Utility"] ?? "");
-    return !utility || utility.toLowerCase().includes("elec") || utility === "";
+    const utility = toStr(r["utility"]).toUpperCase();
+    return utility === "ELECTRICITY" || utility === "ELECTRIC" || utility.includes("ELEC");
   });
 
+  if (elecRows.length === 0) {
+    throw new Error(
+      'No electricity rows found in meter_building_weather_merged.csv. ' +
+      'Expected column "utility" to contain "ELECTRICITY". ' +
+      `Found unique utility values: ${[...new Set(primaryRows.slice(0, 1000).map((r) => toStr(r["utility"])))].join(", ")}`
+    );
+  }
+
   // ── Buildings ──
-  const siteMap = new Map<string, { sqft: number; type: string; code: string }>();
+  const siteMap = new Map<string, { grossarea: number; code: string }>();
   for (const r of elecRows) {
-    const sitename = toStr(r["sitename"] ?? r["SiteName"] ?? r["site_name"] ?? "");
-    if (!sitename || siteMap.has(sitename)) continue;
-    const meta = metaMap.get(sitename);
-    siteMap.set(sitename, {
-      sqft: meta?.sqft ?? toNum(r["grossarea"] ?? r["GrossArea"] ?? 0),
-      type: meta?.type ?? "Building",
-      code: toStr(r["simscode"] ?? r["SIMSCode"] ?? ""),
+    const buildingname = toStr(r["buildingname"]);
+    if (!buildingname || siteMap.has(buildingname)) continue;
+    const meta = metaMap.get(buildingname);
+    siteMap.set(buildingname, {
+      grossarea: toNum(r["grossarea"]) || meta?.grossarea || 0,
+      code: toStr(r["simscode"]),
     });
   }
 
   const buildings: Building[] = Array.from(siteMap.entries()).map(([name, info]) => ({
     id: info.code || name,
     name,
-    sqft: info.sqft,
-    type: info.type,
+    sqft: info.grossarea,
+    type: "Building",
   }));
 
-  // ── Hourly data ──
+  // ── Hourly aggregation ──
+  // Group by truncated hour from readingtime
   const hourlyMap = new Map<string, { kwh: number; temps: number[]; ts: Date }>();
   for (const r of elecRows) {
-    const d = toDate(r["readingtime"] ?? r["ReadingTime"] ?? r["timestamp"] ?? r["date"]);
+    const d = toDate(r["readingtime"]);
     if (!d) continue;
     const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`;
     const existing = hourlyMap.get(key) || { kwh: 0, temps: [], ts: d };
-    existing.kwh += toNum(r["readingvalue"] ?? r["ReadingValue"] ?? r["electricity_kwh"] ?? 0);
-    const temp = toNum(r["temperature_2m"] ?? r["Temperature"] ?? r["temp"] ?? NaN);
-    if (!isNaN(temp) && temp !== 0) existing.temps.push(temp);
+    existing.kwh += toNum(r["readingwindowsum"]);
+    const temp = toNum(r["temperature_2m"]);
+    if (temp !== 0) existing.temps.push(temp);
     hourlyMap.set(key, existing);
   }
 
   const startTime = elecRows.reduce((min, r) => {
-    const d = toDate(r["readingtime"] ?? r["ReadingTime"] ?? r["timestamp"] ?? r["date"]);
+    const d = toDate(r["readingtime"]);
     const t = d?.getTime() ?? Infinity;
     return t < min ? t : min;
   }, Infinity);
@@ -244,17 +325,17 @@ export async function parseAllCsvFiles(
     dailyMap.set(dateKey, existing);
   }
 
-  // Supplement with weather_daily_selected if daily map is thin on temps
+  // Supplement with weather_daily_selected.csv if daily map is thin on temps
   for (const row of weatherDaily.rows) {
-    const dateVal = toStr(row["date"] ?? row["Date"] ?? row["time"] ?? "");
+    const dateVal = toStr(row["date"]);
     if (!dateVal) continue;
     const d = toDate(dateVal);
     if (!d) continue;
     const dateKey = d.toISOString().split("T")[0];
     const existing = dailyMap.get(dateKey);
     if (existing && existing.temps.length === 0) {
-      const temp = toNum(row["temperature_2m"] ?? row["temperature"] ?? row["avg_temp"] ?? NaN);
-      if (!isNaN(temp) && temp !== 0) existing.temps.push(temp);
+      const temp = toNum(row["temperature_2m"]);
+      if (temp !== 0) existing.temps.push(temp);
     }
   }
 
@@ -271,20 +352,27 @@ export async function parseAllCsvFiles(
     }));
 
   // ── Per-building consumption ──
-  const buildingStatsMap = new Map<string, { totalKwh: number; count: number; intensity: number }>();
+  // Source: meterBuildingWeather, filter: utility == ELECTRICITY
+  // Intensity = readingwindowsum / grossarea (skip rows where grossarea is null/0)
+  const buildingStatsMap = new Map<
+    string,
+    { totalKwh: number; count: number; grossarea: number }
+  >();
   for (const r of elecRows) {
-    const sitename = toStr(r["sitename"] ?? r["SiteName"] ?? r["site_name"] ?? "");
-    if (!sitename) continue;
-    const existing = buildingStatsMap.get(sitename) || {
+    const buildingname = toStr(r["buildingname"]);
+    if (!buildingname) continue;
+    const existing = buildingStatsMap.get(buildingname) || {
       totalKwh: 0,
       count: 0,
-      intensity: toNum(r["kwh_per_sqft"] ?? 0),
+      grossarea: toNum(r["grossarea"]),
     };
-    existing.totalKwh += toNum(r["readingvalue"] ?? r["ReadingValue"] ?? r["electricity_kwh"] ?? 0);
+    existing.totalKwh += toNum(r["readingwindowsum"]);
     existing.count += 1;
-    const kps = toNum(r["kwh_per_sqft"] ?? NaN);
-    if (!isNaN(kps) && kps > 0) existing.intensity = kps;
-    buildingStatsMap.set(sitename, existing);
+    // Update grossarea if we have a value and existing is 0
+    if (existing.grossarea === 0) {
+      existing.grossarea = toNum(r["grossarea"]);
+    }
+    buildingStatsMap.set(buildingname, existing);
   }
 
   const buildingConsumption: BuildingConsumption[] = buildings.map((b) => {
@@ -292,17 +380,21 @@ export async function parseAllCsvFiles(
     const totalKwh = stats?.totalKwh ?? 0;
     const count = stats?.count ?? 1;
     const avgHourlyKwh = Math.round(totalKwh / Math.max(count, 1));
+    const grossarea = stats?.grossarea ?? b.sqft;
+    // Compute intensity: readingwindowsum / grossarea, skip if grossarea is 0
     const intensity =
-      stats?.intensity ?? (b.sqft > 0 ? Math.round((totalKwh / b.sqft) * 100) / 100 : 0);
+      grossarea > 0 ? Math.round((totalKwh / grossarea) * 100) / 100 : 0;
     return {
       ...b,
+      sqft: grossarea,
       avgHourlyKwh,
       totalMonthlyKwh: Math.round(totalKwh),
-      intensityKwhPerSqft: Math.round(intensity * 100) / 100,
+      intensityKwhPerSqft: intensity,
     };
   });
 
   // ── Temp vs electricity scatter ──
+  // Source: meterBuildingWeather, X: temperature_2m, Y: readingwindowsum
   const tempVsElectricity: TempVsElectricity[] = dailyData
     .filter((d) => d.avgTemperature !== 0)
     .map((d) => ({ temperature: d.avgTemperature, electricity: d.totalKwh, date: d.label }));
@@ -342,22 +434,23 @@ export async function parseAllCsvFiles(
   };
 
   // ── Month-over-month building changes ──
+  // Source: meterBuildingWeather, group by buildingname + month from readingtime
   const buildingMonthMap = new Map<string, Map<string, number>>();
   for (const r of elecRows) {
-    const sitename = toStr(r["sitename"] ?? r["SiteName"] ?? r["site_name"] ?? "");
-    const d = toDate(r["readingtime"] ?? r["ReadingTime"] ?? r["timestamp"] ?? r["date"]);
-    if (!d || !sitename) continue;
+    const buildingname = toStr(r["buildingname"]);
+    const d = toDate(r["readingtime"]);
+    if (!d || !buildingname) continue;
     const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    if (!buildingMonthMap.has(sitename)) buildingMonthMap.set(sitename, new Map());
-    const months = buildingMonthMap.get(sitename)!;
+    if (!buildingMonthMap.has(buildingname)) buildingMonthMap.set(buildingname, new Map());
+    const months = buildingMonthMap.get(buildingname)!;
     months.set(
       monthKey,
-      (months.get(monthKey) || 0) + toNum(r["readingvalue"] ?? r["ReadingValue"] ?? r["electricity_kwh"] ?? 0)
+      (months.get(monthKey) || 0) + toNum(r["readingwindowsum"])
     );
   }
 
   const buildingMoMChanges: BuildingMoMChange[] = [];
-  for (const [sitename, months] of buildingMonthMap) {
+  for (const [buildingname, months] of buildingMonthMap) {
     const sortedMonths = Array.from(months.entries()).sort(([a], [b]) => a.localeCompare(b));
     for (let i = 1; i < sortedMonths.length; i++) {
       const [prevKey, prevKwh] = sortedMonths[i - 1];
@@ -372,7 +465,7 @@ export async function parseAllCsvFiles(
         });
       };
       buildingMoMChanges.push({
-        name: sitename,
+        name: buildingname,
         prevMonthKwh: Math.round(prevKwh),
         currMonthKwh: Math.round(currKwh),
         changeKwh: Math.round(changeKwh),
@@ -385,7 +478,7 @@ export async function parseAllCsvFiles(
 
   // ── Next-month predictions (linear extrapolation) ──
   const buildingPredictions: BuildingPrediction[] = [];
-  for (const [sitename, months] of buildingMonthMap) {
+  for (const [buildingname, months] of buildingMonthMap) {
     const sortedMonths = Array.from(months.entries()).sort(([a], [b]) => a.localeCompare(b));
     if (sortedMonths.length < 2) continue;
     const lastMonthEntry = sortedMonths[sortedMonths.length - 1];
@@ -408,7 +501,7 @@ export async function parseAllCsvFiles(
       year: "numeric",
     });
     buildingPredictions.push({
-      name: sitename,
+      name: buildingname,
       lastMonthKwh: Math.round(lastMonthKwh),
       predictedKwh: Math.round(predictedKwh),
       avgMoMChangePct: Math.round(avgMoMChange * 10000) / 100,
