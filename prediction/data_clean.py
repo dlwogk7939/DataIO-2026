@@ -30,8 +30,11 @@ BUILDING_FILE = "building_metadata.csv"
 
 WEATHER_FEATURE_COLS = [
     "temperature_2m",
+    "shortwave_radiation",
+    "relative_humidity_2m",
     "precipitation",
     "wind_speed_10m",
+    "cloud_cover",
 ]
 
 BUILDING_KEEP_COLS = [
@@ -39,6 +42,7 @@ BUILDING_KEEP_COLS = [
     "buildingname",
     "campusname",
     "city",
+    "grossarea",
     "latitude",
     "longitude",
 ]
@@ -48,8 +52,28 @@ METER_KEEP_COLS = [
     "utility",
     "readingtime",
     "readingunits",
+    "readingunitsdisplay",
     "readingwindowsum",
 ]
+
+
+def normalize_id(value) -> str:
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return ""
+    try:
+        as_float = float(text)
+        if as_float.is_integer():
+            return str(int(as_float))
+    except Exception:
+        pass
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if not digits:
+        return ""
+    try:
+        return str(int(digits))
+    except Exception:
+        return digits
 
 
 def clean_cols(df: pd.DataFrame) -> pd.DataFrame:
@@ -96,6 +120,8 @@ def load_meter() -> pd.DataFrame:
         meter = meter.rename(columns={"reading_window_sum": "readingwindowsum"})
     if "simscode" not in meter.columns:
         meter = meter.rename(columns={"sims_code": "simscode"})
+    if "readingunitsdisplay" not in meter.columns:
+        meter = meter.rename(columns={"reading_units_display": "readingunitsdisplay"})
 
     meter["readingtime"] = pd.to_datetime(meter["readingtime"], errors="coerce")
     meter = meter.dropna(subset=["readingtime"])
@@ -106,6 +132,7 @@ def load_meter() -> pd.DataFrame:
 
     meter["date"] = meter["readingtime"].dt.date
     meter["simscode"] = meter["simscode"].astype(str).str.strip()
+    meter["simscode_norm"] = meter["simscode"].map(normalize_id)
 
     return meter
 
@@ -190,12 +217,20 @@ def main() -> int:
         meter_premerge = meter[[c for c in METER_KEEP_COLS if c in meter.columns]].copy()
         meter_premerge.to_csv(os.path.join(OUT_DIR, "meter_premerge_selected.csv"), index=False)
 
-        meter_building = meter_premerge.merge(
-            buildings,
-            left_on="simscode",
-            right_on="buildingnumber",
+        meter_for_merge = meter_premerge.copy()
+        meter_for_merge["simscode_norm"] = meter_for_merge["simscode"].map(normalize_id)
+        buildings_for_merge = buildings.copy()
+        buildings_for_merge["buildingnumber_norm"] = buildings_for_merge["buildingnumber"].map(
+            normalize_id
+        )
+
+        meter_building = meter_for_merge.merge(
+            buildings_for_merge,
+            left_on="simscode_norm",
+            right_on="buildingnumber_norm",
             how="left",
         )
+        meter_building = meter_building.drop(columns=["simscode_norm", "buildingnumber_norm"])
 
         if "date" not in meter_building.columns:
             meter_building["date"] = (

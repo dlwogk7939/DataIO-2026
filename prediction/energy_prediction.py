@@ -13,8 +13,9 @@ Run:
   python3 energy_prediction.py
   python3 energy_prediction.py --building-name "Thompson Library"
   python3 energy_prediction.py --train-five-buildings
+  python3 energy_prediction.py --train-five-buildings --metrics-out data/five_building_metrics.csv
   python3 energy_prediction.py --all-buildings
-  python3 energy_prediction.py --predict data/new_daily_weather.csv --out data/predictions.csv
+  python3 energy_prediction.py --input-csv data/new_daily_weather.csv --output-csv data/predictions.csv
 """
 import argparse
 import os
@@ -295,7 +296,17 @@ def evaluate_model(model, X_test, y_test):
 def resolve_path(path: str) -> str:
     if os.path.isabs(path):
         return path
+    # If the caller passes a workspace-relative path, keep it workspace-relative.
+    parent = os.path.dirname(path) or "."
+    if os.path.exists(parent):
+        return os.path.abspath(path)
     return os.path.join(BASE_DIR, path)
+
+
+def ensure_parent_dir(path: str) -> None:
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
 
 
 def predict_from_weather(model, weather_path, out_path, by_building: bool = False):
@@ -325,11 +336,13 @@ def predict_from_weather(model, weather_path, out_path, by_building: bool = Fals
         output = pd.DataFrame(index=weather.index)
 
     output[TARGET_COL] = preds
+    ensure_parent_dir(out_path)
     output.to_csv(out_path, index=False)
     print(f"Wrote predictions to {out_path}")
 
 
-def train_five_buildings():
+def train_five_buildings(metrics_out_path: Optional[str] = None):
+    metrics_rows = []
     print("Training one model per building:")
     for idx, (building_name, building_number) in enumerate(TARGET_BUILDINGS, start=1):
         model, X_test, y_test = train_model(
@@ -342,20 +355,45 @@ def train_five_buildings():
             f"{idx}. {building_name} ({building_number}) | MAE: {mae:.3f} | RMSE: {rmse:.3f} | "
             f"MAE %: {mae_pct:.3f}%"
         )
+        metrics_rows.append(
+            {
+                "building_name": building_name,
+                "building_number": building_number,
+                "mae": mae,
+                "rmse": rmse,
+                "mae_pct": mae_pct,
+            }
+        )
+
+    if metrics_out_path:
+        metrics_out_path = resolve_path(metrics_out_path)
+        ensure_parent_dir(metrics_out_path)
+        pd.DataFrame(metrics_rows).to_csv(metrics_out_path, index=False)
+        print(f"Wrote metrics to {metrics_out_path}")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Daily electricity usage model")
     parser.add_argument(
+        "--input-csv",
+        dest="input_csv",
+        help="Prediction input CSV (same behavior as --predict).",
+    )
+    parser.add_argument(
         "--predict",
         dest="predict_path",
-        help="CSV with daily weather features for prediction",
+        help="CSV with daily weather features for prediction (legacy alias).",
+    )
+    parser.add_argument(
+        "--output-csv",
+        dest="output_csv",
+        help="Prediction output CSV (same behavior as --out).",
     )
     parser.add_argument(
         "--out",
         dest="out_path",
         default="data/predictions.csv",
-        help="Output CSV for predictions",
+        help="Output CSV for predictions (legacy alias).",
     )
     parser.add_argument(
         "--no-eval",
@@ -382,13 +420,28 @@ def main():
         action="store_true",
         help="Train and evaluate separate models for 5 target buildings.",
     )
+    parser.add_argument(
+        "--metrics-out",
+        dest="metrics_out",
+        default="data/five_building_metrics.csv",
+        help="Output CSV path for --train-five-buildings metrics.",
+    )
     args = parser.parse_args()
 
     try:
+        predict_input = args.input_csv or args.predict_path
+        predict_output = args.output_csv or args.out_path
+        if args.input_csv and args.predict_path:
+            raise ValueError("Use either --input-csv or --predict, not both.")
+        if args.output_csv and args.out_path != "data/predictions.csv":
+            raise ValueError("Use either --output-csv or --out, not both.")
+
         if args.train_five_buildings:
-            if args.predict_path:
-                raise ValueError("--predict cannot be used with --train-five-buildings.")
-            train_five_buildings()
+            if predict_input:
+                raise ValueError(
+                    "--input-csv/--predict cannot be used with --train-five-buildings."
+                )
+            train_five_buildings(metrics_out_path=args.metrics_out)
             return
 
         building_name = None if args.all_buildings else args.building_name
@@ -402,11 +455,11 @@ def main():
         )
         if not args.no_eval:
             evaluate_model(model, X_test, y_test)
-        if args.predict_path:
+        if predict_input:
             predict_from_weather(
                 model,
-                args.predict_path,
-                args.out_path,
+                predict_input,
+                predict_output,
                 by_building=args.by_building,
             )
     except Exception as exc:
