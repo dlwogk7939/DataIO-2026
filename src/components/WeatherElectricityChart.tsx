@@ -75,6 +75,27 @@ const WeatherElectricityChart = () => {
     // Bin the data by weather variable ranges for bar chart clarity
     if (filtered.length === 0) return [];
 
+    // For precipitation, use fixed bins aligned to the defined ticks (0, 0.1, ..., 0.5)
+    if (xAxisVar === "precipitation") {
+      const precipBins = new Map<number, { total: number; count: number }>();
+      for (const d of filtered) {
+        const val = getWeatherVal(d);
+        // Snap to nearest 0.1 bin center, clamped to [0, 0.5]
+        const binCenter = Math.min(0.5, Math.max(0, Math.round(val * 10) / 10));
+        const existing = precipBins.get(binCenter) || { total: 0, count: 0 };
+        existing.total += d.totalKwh;
+        existing.count += 1;
+        precipBins.set(binCenter, existing);
+      }
+      return Array.from(precipBins.entries())
+        .sort(([a], [b]) => a - b)
+        .map(([binCenter, val]) => ({
+          weatherVal: binCenter,
+          electricity: Math.round(val.total / val.count),
+          label: `${binCenter}${activeOption.unit}`,
+        }));
+    }
+
     const values = filtered.map(getWeatherVal);
     const min = Math.min(...values);
     const max = Math.max(...values);
