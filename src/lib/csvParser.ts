@@ -78,6 +78,36 @@ export interface UtilityMonthlyEntry {
   unit: string;
 }
 
+export interface BuildingWeatherEntry {
+  buildingName: string;
+  temperature: number;
+  precipitation: number;
+  windSpeed: number;
+  electricity: number;
+  date: string;
+}
+
+export interface WeatherModelResult {
+  coefficients: {
+    temperature: number;
+    precipitation: number;
+    windSpeed: number;
+    intercept: number;
+  };
+  featureImportance: { feature: string; importance: number; absCoeff: number }[];
+  predictions: {
+    actual: number;
+    predicted: number;
+    temperature: number;
+    precipitation: number;
+    windSpeed: number;
+  }[];
+  r2: number;
+  marginalEffect: { temperature: number; predicted: number }[];
+  scenarioComparison: { label: string; temperature: number; predicted: number }[];
+  heatmapData: { temperature: number; windSpeed: number; predicted: number }[];
+}
+
 export interface ParsedData {
   buildings: Building[];
   hourlyData: HourlyEntry[];
@@ -90,4 +120,6 @@ export interface ParsedData {
   buildingMonthlyData: BuildingMonthlyKwh[];
   utilityMonthlyData: UtilityMonthlyEntry[];
   availableUtilities: string[];
+  buildingWeatherData: BuildingWeatherEntry[];
+  weatherModel: WeatherModelResult | null;
 }

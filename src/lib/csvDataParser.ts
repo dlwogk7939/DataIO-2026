@@ -37,6 +37,8 @@ import type {
   BuildingPrediction,
   BuildingMonthlyKwh,
   UtilityMonthlyEntry,
+  BuildingWeatherEntry,
+  WeatherModelResult,
 } from "./csvParser";
 
 // ── Required file definitions ──────────────────────────────────────────────
@@ -599,6 +601,44 @@ export async function parseAllCsvFiles(
   }
   availableUtilities.sort();
 
+  // ── Building-level weather data ──
+  // Aggregate electricity + weather per building per day from elecRows
+  const bwKey = (bName: string, dateKey: string) => `${bName}||${dateKey}`;
+  const bwMap = new Map<string, { kwh: number; temps: number[]; precips: number[]; winds: number[]; date: string; building: string }>();
+  for (const r of elecRows) {
+    const buildingname = toStr(r["buildingname"]);
+    const d = toDate(r["readingtime"]);
+    if (!d || !buildingname) continue;
+    const dateKey = d.toISOString().split("T")[0];
+    const k = bwKey(buildingname, dateKey);
+    const existing = bwMap.get(k) || { kwh: 0, temps: [], precips: [], winds: [], date: dateKey, building: buildingname };
+    existing.kwh += toNum(r["readingwindowsum"]);
+    const temp = toNum(r["temperature_2m"]);
+    const precip = toNum(r["precipitation"]);
+    const wind = toNum(r["wind_speed_10m"]);
+    if (temp !== 0) existing.temps.push(temp);
+    existing.precips.push(precip);
+    existing.winds.push(wind);
+    bwMap.set(k, existing);
+  }
+
+  const buildingWeatherData: BuildingWeatherEntry[] = [];
+  for (const val of bwMap.values()) {
+    if (val.temps.length === 0) continue;
+    buildingWeatherData.push({
+      buildingName: val.building,
+      temperature: Math.round((val.temps.reduce((s, t) => s + t, 0) / val.temps.length) * 10) / 10,
+      precipitation: Math.round((val.precips.reduce((s, v) => s + v, 0) / val.precips.length) * 100) / 100,
+      windSpeed: Math.round((val.winds.reduce((s, v) => s + v, 0) / val.winds.length) * 100) / 100,
+      electricity: Math.round(val.kwh),
+      date: val.date,
+    });
+  }
+
+  // ── Weather-based OLS regression model ──
+  // y = β0 + β1*temp + β2*precip + β3*wind
+  const weatherModel = buildWeatherModel(buildingWeatherData);
+
   return {
     data: {
       buildings,
@@ -612,7 +652,203 @@ export async function parseAllCsvFiles(
       buildingMonthlyData,
       utilityMonthlyData,
       availableUtilities,
+      buildingWeatherData,
+      weatherModel,
     },
     info,
   };
+}
+
+// ── OLS Multivariate Linear Regression ──────────────────────────────────────
+
+function buildWeatherModel(entries: BuildingWeatherEntry[]): WeatherModelResult | null {
+  // Aggregate to daily totals across all buildings for the model
+  const dailyAgg = new Map<string, { kwh: number; temp: number; precip: number; wind: number; count: number }>();
+  for (const e of entries) {
+    const existing = dailyAgg.get(e.date) || { kwh: 0, temp: 0, precip: 0, wind: 0, count: 0 };
+    existing.kwh += e.electricity;
+    existing.temp += e.temperature;
+    existing.precip += e.precipitation;
+    existing.wind += e.windSpeed;
+    existing.count += 1;
+    dailyAgg.set(e.date, existing);
+  }
+
+  const rows = Array.from(dailyAgg.values())
+    .filter((d) => d.count > 0)
+    .map((d) => ({
+      temp: d.temp / d.count,
+      precip: d.precip / d.count,
+      wind: d.wind / d.count,
+      kwh: d.kwh,
+    }));
+
+  if (rows.length < 10) return null;
+
+  // Standardize features for importance comparison
+  const meanTemp = rows.reduce((s, r) => s + r.temp, 0) / rows.length;
+  const meanPrecip = rows.reduce((s, r) => s + r.precip, 0) / rows.length;
+  const meanWind = rows.reduce((s, r) => s + r.wind, 0) / rows.length;
+  const meanKwh = rows.reduce((s, r) => s + r.kwh, 0) / rows.length;
+
+  const stdTemp = Math.sqrt(rows.reduce((s, r) => s + (r.temp - meanTemp) ** 2, 0) / rows.length) || 1;
+  const stdPrecip = Math.sqrt(rows.reduce((s, r) => s + (r.precip - meanPrecip) ** 2, 0) / rows.length) || 1;
+  const stdWind = Math.sqrt(rows.reduce((s, r) => s + (r.wind - meanWind) ** 2, 0) / rows.length) || 1;
+
+  // Build X matrix [1, temp, precip, wind] and y vector
+  // Use normal equation: β = (X^T X)^{-1} X^T y
+  const n = rows.length;
+  const X: number[][] = rows.map((r) => [1, r.temp, r.precip, r.wind]);
+  const y: number[] = rows.map((r) => r.kwh);
+
+  const XtX = matMul(transpose(X), X);
+  const XtXInv = invert4x4(XtX);
+  if (!XtXInv) return null;
+
+  const Xty = matVecMul(transpose(X), y);
+  const beta = XtXInv.map((row) => row.reduce((s, v, j) => s + v * Xty[j], 0));
+
+  const [intercept, bTemp, bPrecip, bWind] = beta;
+
+  // Predictions
+  const predictions = rows.map((r) => ({
+    actual: r.kwh,
+    predicted: Math.round(intercept + bTemp * r.temp + bPrecip * r.precip + bWind * r.wind),
+    temperature: r.temp,
+    precipitation: r.precip,
+    windSpeed: r.wind,
+  }));
+
+  // R²
+  const ssRes = predictions.reduce((s, p) => s + (p.actual - p.predicted) ** 2, 0);
+  const ssTot = rows.reduce((s, r) => s + (r.kwh - meanKwh) ** 2, 0);
+  const r2 = ssTot > 0 ? Math.round((1 - ssRes / ssTot) * 10000) / 10000 : 0;
+
+  // Standardized coefficients for feature importance
+  const stdCoeffs = [
+    { feature: "Temperature", importance: 0, absCoeff: Math.abs(bTemp * stdTemp) },
+    { feature: "Precipitation", importance: 0, absCoeff: Math.abs(bPrecip * stdPrecip) },
+    { feature: "Wind Speed", importance: 0, absCoeff: Math.abs(bWind * stdWind) },
+  ];
+  const totalAbsCoeff = stdCoeffs.reduce((s, c) => s + c.absCoeff, 0) || 1;
+  for (const c of stdCoeffs) {
+    c.importance = Math.round((c.absCoeff / totalAbsCoeff) * 10000) / 100;
+  }
+  stdCoeffs.sort((a, b) => b.importance - a.importance);
+
+  // Marginal effect of temperature (hold others at median)
+  const tempRange = rows.map((r) => r.temp);
+  const minTemp = Math.floor(Math.min(...tempRange));
+  const maxTemp = Math.ceil(Math.max(...tempRange));
+  const marginalEffect: WeatherModelResult["marginalEffect"] = [];
+  for (let t = minTemp; t <= maxTemp; t += 2) {
+    marginalEffect.push({
+      temperature: t,
+      predicted: Math.round(intercept + bTemp * t + bPrecip * meanPrecip + bWind * meanWind),
+    });
+  }
+
+  // Scenario comparison: moderate (~70°F) vs extreme (~90°F)
+  const scenarioComparison: WeatherModelResult["scenarioComparison"] = [
+    {
+      label: "Moderate (~70°F)",
+      temperature: 70,
+      predicted: Math.round(intercept + bTemp * 70 + bPrecip * meanPrecip + bWind * meanWind),
+    },
+    {
+      label: "Extreme (~90°F)",
+      temperature: 90,
+      predicted: Math.round(intercept + bTemp * 90 + bPrecip * meanPrecip + bWind * meanWind),
+    },
+  ];
+
+  // Heatmap: temperature vs wind speed grid
+  const windRange = rows.map((r) => r.wind);
+  const minWind = Math.floor(Math.min(...windRange));
+  const maxWind = Math.ceil(Math.max(...windRange));
+  const heatmapData: WeatherModelResult["heatmapData"] = [];
+  const tempStep = Math.max(2, Math.round((maxTemp - minTemp) / 10));
+  const windStep = Math.max(1, Math.round((maxWind - minWind) / 8)) || 1;
+  for (let t = minTemp; t <= maxTemp; t += tempStep) {
+    for (let w = minWind; w <= maxWind; w += windStep) {
+      heatmapData.push({
+        temperature: t,
+        windSpeed: w,
+        predicted: Math.round(intercept + bTemp * t + bPrecip * meanPrecip + bWind * w),
+      });
+    }
+  }
+
+  return {
+    coefficients: { temperature: bTemp, precipitation: bPrecip, windSpeed: bWind, intercept },
+    featureImportance: stdCoeffs,
+    predictions,
+    r2,
+    marginalEffect,
+    scenarioComparison,
+    heatmapData,
+  };
+}
+
+// ── Linear algebra helpers for 4×4 OLS ───────────────────────────────────────
+
+function transpose(m: number[][]): number[][] {
+  const rows = m.length;
+  const cols = m[0].length;
+  const result: number[][] = Array.from({ length: cols }, () => new Array(rows).fill(0));
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      result[j][i] = m[i][j];
+    }
+  }
+  return result;
+}
+
+function matMul(a: number[][], b: number[][]): number[][] {
+  const rows = a.length;
+  const cols = b[0].length;
+  const inner = b.length;
+  const result: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(0));
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      for (let k = 0; k < inner; k++) {
+        result[i][j] += a[i][k] * b[k][j];
+      }
+    }
+  }
+  return result;
+}
+
+function matVecMul(m: number[][], v: number[]): number[] {
+  return m.map((row) => row.reduce((s, val, j) => s + val * v[j], 0));
+}
+
+function invert4x4(m: number[][]): number[][] | null {
+  const n = m.length;
+  const aug: number[][] = m.map((row, i) => {
+    const r = [...row];
+    for (let j = 0; j < n; j++) r.push(i === j ? 1 : 0);
+    return r;
+  });
+
+  for (let col = 0; col < n; col++) {
+    let maxRow = col;
+    for (let row = col + 1; row < n; row++) {
+      if (Math.abs(aug[row][col]) > Math.abs(aug[maxRow][col])) maxRow = row;
+    }
+    [aug[col], aug[maxRow]] = [aug[maxRow], aug[col]];
+
+    if (Math.abs(aug[col][col]) < 1e-10) return null;
+
+    const pivot = aug[col][col];
+    for (let j = 0; j < 2 * n; j++) aug[col][j] /= pivot;
+
+    for (let row = 0; row < n; row++) {
+      if (row === col) continue;
+      const factor = aug[row][col];
+      for (let j = 0; j < 2 * n; j++) aug[row][j] -= factor * aug[col][j];
+    }
+  }
+
+  return aug.map((row) => row.slice(n));
 }

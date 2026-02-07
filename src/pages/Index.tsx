@@ -10,6 +10,13 @@ import MoMPercentChart from "@/components/MoMPercentChart";
 import ForecastBaselineChart from "@/components/ForecastBaselineChart";
 import WeatherElectricityChart from "@/components/WeatherElectricityChart";
 import InsightsPanel from "@/components/InsightsPanel";
+import BuildingTempScatterChart from "@/components/BuildingTempScatterChart";
+import MarginalEffectChart from "@/components/MarginalEffectChart";
+import BuildingDistributionChart from "@/components/BuildingDistributionChart";
+import FeatureImportanceChart from "@/components/FeatureImportanceChart";
+import PredictedVsActualChart from "@/components/PredictedVsActualChart";
+import ScenarioComparisonChart from "@/components/ScenarioComparisonChart";
+import WeatherHeatmapChart from "@/components/WeatherHeatmapChart";
 
 const Index = () => {
   const { data, reset } = useDataContext();
@@ -128,7 +135,40 @@ const Index = () => {
                 <WeatherElectricityChart />
               </div>
 
-              {/* 6. Insights Panel — full width */}
+              {/* ── Methodology & Model-Driven Insights ── */}
+              <div className="lg:col-span-2 mt-4">
+                <h2 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
+                  Weather Sensitivity &amp; Model Analysis
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Methodology-driven visualizations — quantifying weather impact, model behavior, and what-if scenarios
+                </p>
+              </div>
+
+              {/* 6. Building-level Temp vs Electricity + Marginal Effect */}
+              <BuildingTempScatterChart />
+              <MarginalEffectChart />
+
+              {/* 7. Building Distribution — full width */}
+              <div className="lg:col-span-2">
+                <BuildingDistributionChart />
+              </div>
+
+              {/* 8. Feature Importance + Scenario Comparison */}
+              <FeatureImportanceChart />
+              <ScenarioComparisonChart />
+
+              {/* 9. Predicted vs Actual — full width */}
+              <div className="lg:col-span-2">
+                <PredictedVsActualChart />
+              </div>
+
+              {/* 10. Weather Heatmap — full width */}
+              <div className="lg:col-span-2">
+                <WeatherHeatmapChart />
+              </div>
+
+              {/* 11. Insights Panel — full width */}
               <div className="lg:col-span-2">
                 <InsightsPanel />
               </div>
