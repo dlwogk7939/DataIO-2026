@@ -21,6 +21,8 @@ export interface DailyEntry {
   label: string;
   totalKwh: number;
   avgTemperature: number;
+  avgPrecipitation: number;
+  avgWindSpeed: number;
 }
 
 export interface BuildingConsumption extends Building {
