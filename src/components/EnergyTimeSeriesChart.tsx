@@ -1,52 +1,63 @@
 import {
-  AreaChart,
-  Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Cell,
 } from "recharts";
-import { hourlyData } from "@/data/mockData";
+import { buildingConsumption } from "@/data/mockData";
 
-const chartData = hourlyData
-  .filter((_, i) => i % 3 === 0) // Sample every 3 hours for performance
-  .map((d) => ({
-    time: new Date(d.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-    hour: `${new Date(d.timestamp).getHours()}:00`,
-    kWh: d.totalKwh,
+const chartData = [...buildingConsumption]
+  .sort((a, b) => b.totalMonthlyKwh - a.totalMonthlyKwh)
+  .map((b) => ({
+    name: b.name,
+    type: b.type,
+    kWh: Math.round(b.totalMonthlyKwh / 1000), // Convert to MWh for readability
   }));
 
 const EnergyTimeSeriesChart = () => (
   <div className="rounded-lg border border-border bg-card p-5 animate-fade-in" style={{ animationDelay: "400ms" }}>
     <div className="mb-4">
-      <h3 className="text-sm font-semibold text-foreground">Hourly Electricity Usage</h3>
+      <h3 className="text-sm font-semibold text-foreground">Building Electricity Usage</h3>
       <p className="text-xs text-muted-foreground mt-1">
-        Campus-wide electricity consumption over 30 days (sampled every 3 hours)
+        Total monthly electricity consumption by building (MWh) — January 2025
       </p>
     </div>
     <div className="h-[280px]">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+        <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 40 }}>
           <defs>
-            <linearGradient id="energyGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="hsl(152, 76%, 48%)" stopOpacity={0.4} />
-              <stop offset="100%" stopColor="hsl(152, 76%, 48%)" stopOpacity={0} />
+            <linearGradient id="buildingBarGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="hsl(152, 76%, 48%)" stopOpacity={0.9} />
+              <stop offset="100%" stopColor="hsl(152, 76%, 48%)" stopOpacity={0.4} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(220, 14%, 18%)" />
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(220, 14%, 18%)" vertical={false} />
           <XAxis
-            dataKey="time"
-            tick={{ fontSize: 10, fill: "hsl(220, 10%, 50%)" }}
+            dataKey="name"
+            tick={{ fontSize: 9, fill: "hsl(220, 10%, 50%)" }}
             tickLine={false}
             axisLine={{ stroke: "hsl(220, 14%, 18%)" }}
-            interval={Math.floor(chartData.length / 6)}
+            angle={-40}
+            textAnchor="end"
+            height={60}
           />
           <YAxis
             tick={{ fontSize: 10, fill: "hsl(220, 10%, 50%)" }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v) => `${v}`}
+            label={{
+              value: "MWh",
+              angle: -90,
+              position: "insideLeft",
+              fontSize: 10,
+              fill: "hsl(220, 10%, 50%)",
+              offset: 10,
+            }}
           />
           <Tooltip
             contentStyle={{
@@ -56,16 +67,27 @@ const EnergyTimeSeriesChart = () => (
               fontSize: "12px",
               color: "hsl(160, 10%, 88%)",
             }}
-            formatter={(value: number) => [`${value.toLocaleString()} kWh`, "Usage"]}
+            formatter={(value: number) => [`${value.toLocaleString()} MWh`, "Usage"]}
+            labelFormatter={(label) => {
+              const item = chartData.find((d) => d.name === label);
+              return `${label} (${item?.type || ""})`;
+            }}
           />
-          <Area
-            type="monotone"
-            dataKey="kWh"
-            stroke="hsl(152, 76%, 48%)"
-            strokeWidth={1.5}
-            fill="url(#energyGradient)"
-          />
-        </AreaChart>
+          <Bar dataKey="kWh" radius={[4, 4, 0, 0]}>
+            {chartData.map((entry, index) => (
+              <Cell
+                key={index}
+                fill={
+                  index < 3
+                    ? "hsl(152, 76%, 48%)"
+                    : index < 6
+                    ? "hsl(190, 80%, 50%)"
+                    : "hsl(220, 16%, 28%)"
+                }
+              />
+            ))}
+          </Bar>
+        </BarChart>
       </ResponsiveContainer>
     </div>
   </div>
