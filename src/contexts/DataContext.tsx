@@ -1,33 +1,34 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
 import type { ParsedData } from "@/lib/csvParser";
 import {
-  parseParquetFile,
-  buildParsedDataFromGold,
-  validateGoldColumns,
-  type ParquetInfo,
-} from "@/lib/parquetParser";
+  parseAllCsvFiles,
+  REQUIRED_FILES,
+  type RequiredFileName,
+  type AllCsvInfo,
+} from "@/lib/csvDataParser";
 
-export const PARQUET_FILE = "df_gold.parquet" as const;
+export { REQUIRED_FILES };
+export type { RequiredFileName };
 
 interface DataContextValue {
-  /** Parsed analytics data — null until parquet uploaded */
+  /** Parsed analytics data — null until all CSVs uploaded & processed */
   data: ParsedData | null;
-  /** The uploaded parquet file, if any */
-  uploadedFile: File | null;
-  /** Whether the required file is present */
-  fileReady: boolean;
+  /** Map of uploaded files by required filename */
+  uploadedFiles: Map<RequiredFileName, File>;
+  /** Whether all required files are present */
+  allFilesReady: boolean;
   /** Is currently parsing */
   isParsing: boolean;
   /** Parsing error message */
   parseError: string | null;
-  /** Info about the loaded parquet file */
-  parquetInfo: ParquetInfo | null;
-  /** Set the parquet file from user upload */
-  setFile: (file: File) => void;
-  /** Remove the uploaded file */
-  removeFile: () => void;
-  /** Trigger parsing of the uploaded file */
-  processFile: () => Promise<void>;
+  /** Info about each parsed CSV */
+  csvInfo: AllCsvInfo | null;
+  /** Add a file (matched by name) */
+  addFile: (file: File) => void;
+  /** Remove a specific file */
+  removeFile: (name: RequiredFileName) => void;
+  /** Trigger parsing of all uploaded files */
+  processFiles: () => Promise<void>;
   /** Reset to upload state */
   reset: () => void;
 }
@@ -41,77 +42,79 @@ export function useDataContext() {
 }
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<Map<RequiredFileName, File>>(new Map());
   const [data, setData] = useState<ParsedData | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
-  const [parquetInfo, setParquetInfo] = useState<ParquetInfo | null>(null);
+  const [csvInfo, setCsvInfo] = useState<AllCsvInfo | null>(null);
 
-  const fileReady = uploadedFile !== null;
+  const allFilesReady = REQUIRED_FILES.every((f) => uploadedFiles.has(f));
 
-  const setFile = useCallback((file: File) => {
-    setUploadedFile(file);
-    setParseError(null);
-    setData(null);
-    setParquetInfo(null);
+  const addFile = useCallback((file: File) => {
+    const matched = REQUIRED_FILES.find(
+      (req) => file.name.toLowerCase().trim() === req.toLowerCase()
+    );
+    if (matched) {
+      setUploadedFiles((prev) => {
+        const next = new Map(prev);
+        next.set(matched, file);
+        return next;
+      });
+      setParseError(null);
+    }
   }, []);
 
-  const removeFile = useCallback(() => {
-    setUploadedFile(null);
+  const removeFile = useCallback((name: RequiredFileName) => {
+    setUploadedFiles((prev) => {
+      const next = new Map(prev);
+      next.delete(name);
+      return next;
+    });
     setData(null);
-    setParquetInfo(null);
+    setCsvInfo(null);
     setParseError(null);
   }, []);
 
-  const processFile = useCallback(async () => {
-    if (!uploadedFile) return;
+  const processFiles = useCallback(async () => {
+    if (!REQUIRED_FILES.every((f) => uploadedFiles.has(f))) return;
     setIsParsing(true);
     setParseError(null);
-    setParquetInfo(null);
+    setCsvInfo(null);
 
     try {
-      const { info, rows } = await parseParquetFile(uploadedFile);
+      const filesObj = Object.fromEntries(
+        REQUIRED_FILES.map((f) => [f, uploadedFiles.get(f)!])
+      ) as Record<RequiredFileName, File>;
 
-      // Validate columns
-      const missingCols = validateGoldColumns(info.columns);
-      if (missingCols.length > 0) {
-        throw new Error(
-          `df_gold.parquet is missing required columns: ${missingCols.join(", ")}. ` +
-            `Found columns: ${info.columns.join(", ")}`
-        );
-      }
-
-      setParquetInfo(info);
-      const parsed = buildParsedDataFromGold(rows);
-      setData(parsed);
+      const result = await parseAllCsvFiles(filesObj);
+      setCsvInfo(result.info);
+      setData(result.data);
     } catch (err) {
-      setParseError(
-        err instanceof Error ? err.message : "Failed to parse file"
-      );
+      setParseError(err instanceof Error ? err.message : "Failed to parse CSV files");
     } finally {
       setIsParsing(false);
     }
-  }, [uploadedFile]);
+  }, [uploadedFiles]);
 
   const reset = useCallback(() => {
-    setUploadedFile(null);
+    setUploadedFiles(new Map());
     setData(null);
     setParseError(null);
-    setParquetInfo(null);
+    setCsvInfo(null);
   }, []);
 
   return (
     <DataContext.Provider
       value={{
         data,
-        uploadedFile,
-        fileReady,
+        uploadedFiles,
+        allFilesReady,
         isParsing,
         parseError,
-        parquetInfo,
-        setFile,
+        csvInfo,
+        addFile,
         removeFile,
-        processFile,
+        processFiles,
         reset,
       }}
     >

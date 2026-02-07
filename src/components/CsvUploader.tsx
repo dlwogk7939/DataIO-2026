@@ -1,44 +1,50 @@
 import { useCallback, useRef, useState } from "react";
-import { Upload, CheckCircle2, Database, X, Loader2, AlertCircle } from "lucide-react";
-import { useDataContext, PARQUET_FILE } from "@/contexts/DataContext";
+import {
+  Upload,
+  CheckCircle2,
+  Circle,
+  Database,
+  X,
+  Loader2,
+  AlertCircle,
+  FileSpreadsheet,
+} from "lucide-react";
+import { useDataContext, REQUIRED_FILES } from "@/contexts/DataContext";
+import { FILE_DESCRIPTIONS, type RequiredFileName } from "@/lib/csvDataParser";
+import CsvSummaryPanel from "./CsvSummaryPanel";
 
 const CsvUploader = () => {
   const {
-    uploadedFile,
-    fileReady,
+    uploadedFiles,
+    allFilesReady,
     isParsing,
     parseError,
-    parquetInfo,
-    setFile,
+    csvInfo,
+    addFile,
     removeFile,
-    processFile,
+    processFiles,
   } = useDataContext();
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const handleFileDrop = useCallback(
-    (files: FileList | File[]) => {
-      const arr = Array.from(files);
-      const parquet = arr.find(
-        (f) => f.name.toLowerCase().trim() === PARQUET_FILE
-      );
-      if (parquet) {
-        setFile(parquet);
+  const handleFiles = useCallback(
+    (fileList: FileList | File[]) => {
+      const arr = Array.from(fileList);
+      for (const f of arr) {
+        addFile(f);
       }
     },
-    [setFile]
+    [addFile]
   );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragging(false);
-      if (e.dataTransfer.files.length > 0) {
-        handleFileDrop(e.dataTransfer.files);
-      }
+      if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
     },
-    [handleFileDrop]
+    [handleFiles]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -53,25 +59,25 @@ const CsvUploader = () => {
 
   const handleFileInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files.length > 0) {
-        handleFileDrop(e.target.files);
-      }
+      if (e.target.files && e.target.files.length > 0) handleFiles(e.target.files);
       e.target.value = "";
     },
-    [handleFileDrop]
+    [handleFiles]
   );
+
+  const uploadedCount = REQUIRED_FILES.filter((f) => uploadedFiles.has(f)).length;
 
   return (
     <div className="mx-auto max-w-2xl">
+      {/* Header */}
       <div className="mb-8 text-center">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 glow-green">
           <Database className="h-7 w-7 text-primary" />
         </div>
-        <h2 className="text-xl font-bold text-foreground sm:text-2xl">
-          Upload Your Dataset
-        </h2>
+        <h2 className="text-xl font-bold text-foreground sm:text-2xl">Upload Your Datasets</h2>
         <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
-          Upload <span className="font-mono text-foreground/80">{PARQUET_FILE}</span> — the pre-cleaned gold dataset containing smart meter, weather, and building data.
+          Upload all five required CSV files to power the energy analytics dashboard. All charts
+          are driven entirely by your data — no mock or demo data is used.
         </p>
       </div>
 
@@ -90,81 +96,44 @@ const CsvUploader = () => {
         <input
           ref={inputRef}
           type="file"
-          accept=".parquet"
+          accept=".csv"
+          multiple
           className="hidden"
           onChange={handleFileInput}
         />
-        {uploadedFile ? (
-          <div className="flex flex-col items-center gap-2">
-            <CheckCircle2 className="h-10 w-10 text-primary mb-1" />
-            <p className="text-sm font-medium text-foreground">
-              {uploadedFile.name}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {(uploadedFile.size / (1024 * 1024)).toFixed(1)} MB · Click to replace
-            </p>
-          </div>
-        ) : (
-          <>
-            <Upload className="mx-auto h-10 w-10 text-muted-foreground/60 mb-3" />
-            <p className="text-sm font-medium text-foreground">
-              {isDragging
-                ? "Drop file here..."
-                : "Click to browse or drag & drop"}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Only <span className="font-mono">{PARQUET_FILE}</span> is accepted
-            </p>
-          </>
-        )}
+        <Upload className="mx-auto h-10 w-10 text-muted-foreground/60 mb-3" />
+        <p className="text-sm font-medium text-foreground">
+          {isDragging ? "Drop CSV files here..." : "Click to browse or drag & drop"}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Select one or more CSV files at a time ·{" "}
+          <span className="font-mono text-foreground/80">
+            {uploadedCount}/{REQUIRED_FILES.length}
+          </span>{" "}
+          uploaded
+        </p>
       </div>
 
-      {/* Uploaded file indicator with remove */}
-      {uploadedFile && (
-        <div className="mt-4 flex items-center justify-between rounded-md border border-primary/30 bg-primary/10 px-4 py-3">
-          <div className="flex items-center gap-2.5">
-            <Database className="h-4 w-4 text-primary shrink-0" />
-            <div>
-              <span className="font-mono text-xs text-foreground block">
-                {PARQUET_FILE}
-              </span>
-              <span className="text-[10px] text-muted-foreground">
-                Single source of truth for all visualizations
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              removeFile();
-            }}
-            className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
+      {/* File checklist */}
+      <div className="mt-5 space-y-2">
+        {REQUIRED_FILES.map((fileName) => {
+          const isUploaded = uploadedFiles.has(fileName);
+          const file = uploadedFiles.get(fileName);
+          return (
+            <FileChecklistItem
+              key={fileName}
+              fileName={fileName}
+              description={FILE_DESCRIPTIONS[fileName]}
+              isUploaded={isUploaded}
+              fileSize={file?.size}
+              onRemove={() => removeFile(fileName)}
+            />
+          );
+        })}
+      </div>
 
-      {/* Parquet confirmation */}
-      {parquetInfo && (
-        <div className="mt-4 flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 p-3">
-          <Database className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-          <div className="text-xs">
-            <p className="font-medium text-primary">
-              Dataset loaded successfully
-            </p>
-            <p className="text-muted-foreground mt-1">
-              <span className="font-mono">
-                {parquetInfo.rowCount.toLocaleString()}
-              </span>{" "}
-              rows · {parquetInfo.columns.length} columns
-            </p>
-            <p className="text-muted-foreground mt-0.5 font-mono text-[10px] leading-relaxed">
-              {parquetInfo.columns.join(", ")}
-            </p>
-          </div>
-        </div>
-      )}
+      {/* CSV summary panel */}
+      {csvInfo && <CsvSummaryPanel info={csvInfo} />}
 
       {/* Error message */}
       {parseError && (
@@ -176,10 +145,10 @@ const CsvUploader = () => {
 
       {/* Process button */}
       <button
-        disabled={!fileReady || isParsing}
-        onClick={processFile}
+        disabled={!allFilesReady || isParsing}
+        onClick={processFiles}
         className={`mt-6 flex w-full items-center justify-center gap-2 rounded-lg px-6 py-3 text-sm font-semibold transition-all duration-200 ${
-          fileReady && !isParsing
+          allFilesReady && !isParsing
             ? "bg-primary text-primary-foreground hover:brightness-110 glow-green cursor-pointer"
             : "bg-muted text-muted-foreground cursor-not-allowed"
         }`}
@@ -187,17 +156,80 @@ const CsvUploader = () => {
         {isParsing ? (
           <>
             <Loader2 className="h-4 w-4 animate-spin" />
-            Parsing dataset...
+            Parsing datasets...
           </>
         ) : (
           <>
             <Upload className="h-4 w-4" />
-            {fileReady ? "Process & Visualize" : "Upload df_gold.parquet to continue"}
+            {allFilesReady
+              ? "Process & Visualize"
+              : `Upload ${REQUIRED_FILES.length - uploadedCount} more file${
+                  REQUIRED_FILES.length - uploadedCount !== 1 ? "s" : ""
+                } to continue`}
           </>
         )}
       </button>
     </div>
   );
 };
+
+// ── Checklist item ──────────────────────────────────────────────────────────
+
+function FileChecklistItem({
+  fileName,
+  description,
+  isUploaded,
+  fileSize,
+  onRemove,
+}: {
+  fileName: string;
+  description: string;
+  isUploaded: boolean;
+  fileSize?: number;
+  onRemove: () => void;
+}) {
+  return (
+    <div
+      className={`flex items-center justify-between rounded-md border px-3 py-2.5 transition-colors ${
+        isUploaded
+          ? "border-primary/30 bg-primary/10"
+          : "border-border bg-card/50"
+      }`}
+    >
+      <div className="flex items-center gap-2.5 min-w-0">
+        {isUploaded ? (
+          <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
+        ) : (
+          <Circle className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+        )}
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <FileSpreadsheet className="h-3 w-3 text-muted-foreground shrink-0" />
+            <span className="font-mono text-xs text-foreground truncate">{fileName}</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0 ml-2">
+        {isUploaded && fileSize && (
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {(fileSize / (1024 * 1024)).toFixed(1)} MB
+          </span>
+        )}
+        {isUploaded && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default CsvUploader;
