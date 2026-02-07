@@ -95,9 +95,9 @@ const SeasonalScatterChart = () => {
           Each dot = one day, colored by season — internal loads dominate over weather sensitivity
         </p>
       </div>
-      <div className="h-[340px]">
+      <div className="h-[360px]">
         <ResponsiveContainer width="100%" height="100%">
-          <ScatterChart margin={{ top: 10, right: 10, left: 20, bottom: 40 }}>
+          <ScatterChart margin={{ top: 10, right: 15, left: 10, bottom: 35 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(220, 14%, 18%)" />
             <XAxis
               type="number"
@@ -120,8 +120,8 @@ const SeasonalScatterChart = () => {
                 if (v >= 1_000) return `${(v / 1_000).toFixed(0)}k`;
                 return String(v);
               }}
-              width={50}
-              label={{ value: "Daily Electricity (kWh)", angle: -90, position: "insideLeft", fontSize: 10, fill: "hsl(220, 10%, 50%)", dx: -10 }}
+              width={55}
+              label={{ value: "Daily Electricity (kWh)", angle: -90, position: "insideLeft", fontSize: 10, fill: "hsl(220, 10%, 50%)", dx: -15 }}
             />
             <ZAxis range={[30, 30]} />
             <Tooltip
