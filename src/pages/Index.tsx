@@ -2,7 +2,7 @@ import { Zap, Activity, RotateCcw } from "lucide-react";
 import { useDataContext } from "@/contexts/DataContext";
 import CsvUploader from "@/components/CsvUploader";
 import MetricCard from "@/components/MetricCard";
-import ParetoChart from "@/components/ParetoChart";
+import UtilityTimeChart from "@/components/UtilityTimeChart";
 import IntensityByTypeChart from "@/components/IntensityByTypeChart";
 import SeasonalScatterChart from "@/components/SeasonalScatterChart";
 import MonthlyTrendChart from "@/components/MonthlyTrendChart";
@@ -105,9 +105,9 @@ const Index = () => {
 
             {/* Chart Grid — Insight-first layout */}
             <div className="grid gap-4 lg:grid-cols-2">
-              {/* 1. Pareto — full width */}
+              {/* 1. Utility vs Time — full width */}
               <div className="lg:col-span-2">
-                <ParetoChart />
+                <UtilityTimeChart />
               </div>
 
               {/* 2. Intensity by Type + Seasonal Scatter */}
