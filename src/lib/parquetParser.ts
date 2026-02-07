@@ -9,26 +9,21 @@ export type { ParsedData };
 export interface ParquetInfo {
   rowCount: number;
   columns: string[];
+  fileSizeBytes: number;
+  bufferByteLength: number;
 }
 
-/** Wrap an ArrayBuffer so hyparquet can consume it */
-function asyncBufferFromArrayBuffer(buf: ArrayBuffer) {
+/**
+ * Wrap an ArrayBuffer into the AsyncBuffer interface hyparquet expects.
+ * slice() must return a Promise<ArrayBuffer>.
+ */
+function toAsyncBuffer(buf: ArrayBuffer) {
   return {
     byteLength: buf.byteLength,
-    slice(start: number, end?: number) {
-      return buf.slice(start, end);
+    slice(start: number, end?: number): Promise<ArrayBuffer> {
+      return Promise.resolve(buf.slice(start, end));
     },
   };
-}
-
-/** Read a File as ArrayBuffer */
-function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as ArrayBuffer);
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.readAsArrayBuffer(file);
-  });
 }
 
 /** Gold row from df_gold.parquet */
@@ -46,28 +41,50 @@ interface GoldRow {
 }
 
 /**
- * Parse df_gold.parquet and extract metadata + rows.
- * Returns { info, rows } where info contains row count & column list.
+ * Parse df_gold.parquet from a File.
+ * Reads the file as a single ArrayBuffer and feeds it to hyparquet.
  */
-export async function parseParquetFile(file: File): Promise<{ info: ParquetInfo; rows: GoldRow[] }> {
-  const arrayBuffer = await readFileAsArrayBuffer(file);
-  const asyncBuffer = asyncBufferFromArrayBuffer(arrayBuffer);
+export async function parseParquetFile(
+  file: File
+): Promise<{ info: ParquetInfo; rows: GoldRow[] }> {
+  // Read the entire file into an ArrayBuffer (works for ~70 MB files)
+  const buffer: ArrayBuffer = await file.arrayBuffer();
+  const asyncBuffer = toAsyncBuffer(buffer);
 
-  // Read metadata for info
+  console.group("🔍 Parquet Debug Info");
+  console.log("File name:", file.name);
+  console.log("File size:", `${(file.size / (1024 * 1024)).toFixed(2)} MB`);
+  console.log("ArrayBuffer byteLength:", buffer.byteLength);
+
+  // Read metadata
   const metadata = await parquetMetadata(asyncBuffer as any);
-  const columns = (metadata as any).schema
+  const columns: string[] = (metadata as any).schema
     .filter((s: any) => s.name !== "schema" && !s.num_children)
     .map((s: any) => s.name);
   const rowCount = Number((metadata as any).num_rows);
 
+  console.log("Row count:", rowCount.toLocaleString());
+  console.log("Columns:", columns.join(", "));
+
   // Read all rows as objects
-  const rows = await parquetReadObjects({
+  const rows = (await parquetReadObjects({
     file: asyncBuffer as any,
-  }) as Record<string, unknown>[];
+  })) as Record<string, unknown>[];
 
-  const goldRows: GoldRow[] = rows.map((row) => row as unknown as GoldRow);
+  console.log("Rows parsed:", rows.length.toLocaleString());
+  console.groupEnd();
 
-  return { info: { rowCount, columns }, rows: goldRows };
+  const goldRows: GoldRow[] = rows as unknown as GoldRow[];
+
+  return {
+    info: {
+      rowCount,
+      columns,
+      fileSizeBytes: file.size,
+      bufferByteLength: buffer.byteLength,
+    },
+    rows: goldRows,
+  };
 }
 
 /** Validate that the parquet has the required columns */
@@ -213,7 +230,6 @@ export function buildParsedDataFromGold(rows: GoldRow[]): ParsedData {
     };
     existing.totalKwh += r.readingvalue || 0;
     existing.count += 1;
-    // Keep latest intensity value from gold
     if (r.kwh_per_sqft != null && !isNaN(r.kwh_per_sqft)) {
       existing.intensity = r.kwh_per_sqft;
     }
