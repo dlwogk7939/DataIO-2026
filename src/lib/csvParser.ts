@@ -68,6 +68,14 @@ export interface BuildingMonthlyKwh {
   kwh: number;
 }
 
+export interface UtilityMonthlyEntry {
+  utility: string;
+  monthKey: string;
+  monthLabel: string;
+  totalUsage: number;
+  unit: string;
+}
+
 export interface ParsedData {
   buildings: Building[];
   hourlyData: HourlyEntry[];
@@ -78,4 +86,6 @@ export interface ParsedData {
   buildingMoMChanges: BuildingMoMChange[];
   buildingPredictions: BuildingPrediction[];
   buildingMonthlyData: BuildingMonthlyKwh[];
+  utilityMonthlyData: UtilityMonthlyEntry[];
+  availableUtilities: string[];
 }

@@ -36,6 +36,7 @@ import type {
   BuildingMoMChange,
   BuildingPrediction,
   BuildingMonthlyKwh,
+  UtilityMonthlyEntry,
 } from "./csvParser";
 
 // ── Required file definitions ──────────────────────────────────────────────
@@ -531,6 +532,40 @@ export async function parseAllCsvFiles(
   }
   buildingPredictions.sort((a, b) => b.predictedKwh - a.predictedKwh);
 
+  // ── Utility-level monthly aggregation (ALL utilities, not just electricity) ──
+  const utilityMonthAggMap = new Map<string, Map<string, { total: number; unit: string }>>();
+  for (const r of primaryRows) {
+    const utility = toStr(r["utility"]).trim();
+    if (!utility) continue;
+    const d = toDate(r["readingtime"]);
+    if (!d) continue;
+    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    if (!utilityMonthAggMap.has(utility)) utilityMonthAggMap.set(utility, new Map());
+    const months = utilityMonthAggMap.get(utility)!;
+    const existing = months.get(monthKey) || { total: 0, unit: toStr(r["readingunitsdisplay"]) || toStr(r["readingunits"]) || "kWh" };
+    existing.total += toNum(r["readingwindowsum"]);
+    months.set(monthKey, existing);
+  }
+
+  const utilityMonthlyData: UtilityMonthlyEntry[] = [];
+  const availableUtilities: string[] = [];
+  for (const [utility, months] of utilityMonthAggMap) {
+    availableUtilities.push(utility);
+    const sortedMonths = Array.from(months.entries()).sort(([a], [b]) => a.localeCompare(b));
+    for (const [monthKey, val] of sortedMonths) {
+      const [yy, mm] = monthKey.split("-").map(Number);
+      const ml = new Date(yy, mm - 1).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+      utilityMonthlyData.push({
+        utility,
+        monthKey,
+        monthLabel: ml,
+        totalUsage: Math.round(val.total),
+        unit: val.unit,
+      });
+    }
+  }
+  availableUtilities.sort();
+
   return {
     data: {
       buildings,
@@ -542,6 +577,8 @@ export async function parseAllCsvFiles(
       buildingMoMChanges,
       buildingPredictions,
       buildingMonthlyData,
+      utilityMonthlyData,
+      availableUtilities,
     },
     info,
   };
