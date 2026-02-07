@@ -53,6 +53,14 @@ export interface BuildingMoMChange {
   currMonthLabel: string;
 }
 
+export interface BuildingPrediction {
+  name: string;
+  lastMonthKwh: number;
+  predictedKwh: number;
+  avgMoMChangePct: number;
+  predictedMonthLabel: string;
+}
+
 export interface ParsedData {
   buildings: Building[];
   hourlyData: HourlyEntry[];
@@ -61,4 +69,5 @@ export interface ParsedData {
   tempVsElectricity: TempVsElectricity[];
   summaryMetrics: SummaryMetrics;
   buildingMoMChanges: BuildingMoMChange[];
+  buildingPredictions: BuildingPrediction[];
 }
