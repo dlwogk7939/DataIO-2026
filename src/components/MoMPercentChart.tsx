@@ -132,15 +132,21 @@ const MoMPercentChart = () => {
         </ResponsiveContainer>
       </div>
       <div className="mt-3 flex items-center gap-4 text-[10px] text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full bg-energy-red" /> &gt;20% increase
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full bg-energy-amber" /> Moderate increase
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full bg-primary" /> Decrease
-        </span>
+        {sorted.some((e) => e.changePct > 20) && (
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-full bg-energy-red" /> &gt;20% increase
+          </span>
+        )}
+        {sorted.some((e) => e.changePct > 0 && e.changePct <= 20) && (
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-full bg-energy-amber" /> Moderate increase
+          </span>
+        )}
+        {sorted.some((e) => e.changePct <= 0) && (
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-full bg-primary" /> Decrease
+          </span>
+        )}
       </div>
     </div>
   );
