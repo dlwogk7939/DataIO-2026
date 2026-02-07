@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-import { Upload, CheckCircle2, Circle, FileText, X, Loader2, AlertCircle } from "lucide-react";
-import { useDataContext, REQUIRED_FILES } from "@/contexts/DataContext";
+import { Upload, CheckCircle2, Circle, FileText, X, Loader2, AlertCircle, Database } from "lucide-react";
+import { useDataContext, REQUIRED_CSV_FILES, PARQUET_FILE, REQUIRED_FILES } from "@/contexts/DataContext";
 
 const CsvUploader = () => {
   const {
@@ -8,6 +8,7 @@ const CsvUploader = () => {
     allFilesReady,
     isParsing,
     parseError,
+    parquetInfo,
     addFiles,
     removeFile,
     processFiles,
@@ -42,7 +43,6 @@ const CsvUploader = () => {
       if (e.target.files && e.target.files.length > 0) {
         addFiles(e.target.files);
       }
-      // Reset input so the same files can be re-selected
       e.target.value = "";
     },
     [addFiles]
@@ -60,8 +60,8 @@ const CsvUploader = () => {
           Upload Your Datasets
         </h2>
         <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
-          This dashboard requires the following CSV files for analysis and visualization.
-          Drag &amp; drop them below or click to browse.
+          This dashboard requires the following CSV files and the gold parquet dataset
+          for analysis and visualization. Drag &amp; drop them below or click to browse.
         </p>
       </div>
 
@@ -80,14 +80,14 @@ const CsvUploader = () => {
         <input
           ref={inputRef}
           type="file"
-          accept=".csv"
+          accept=".csv,.parquet"
           multiple
           className="hidden"
           onChange={handleFileInput}
         />
         <FileText className="mx-auto h-10 w-10 text-muted-foreground/60 mb-3" />
         <p className="text-sm font-medium text-foreground">
-          {isDragging ? "Drop CSV files here..." : "Click to browse or drag & drop CSV files"}
+          {isDragging ? "Drop files here..." : "Click to browse or drag & drop CSV / Parquet files"}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
           {uploadedCount}/{REQUIRED_FILES.length} files uploaded
@@ -96,11 +96,62 @@ const CsvUploader = () => {
 
       {/* File checklist */}
       <div className="mt-6 rounded-lg border border-border bg-card p-4">
+        {/* Parquet file (highlighted) */}
         <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-          Required Files
+          Gold Dataset (Required)
+        </h3>
+        <div className="mb-4">
+          {(() => {
+            const isUploaded = uploadedFiles.has(PARQUET_FILE);
+            return (
+              <div
+                className={`flex items-center justify-between rounded-md px-3 py-2.5 text-sm transition-colors ${
+                  isUploaded
+                    ? "bg-primary/10 border border-primary/30"
+                    : "bg-muted/30 border border-transparent"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  {isUploaded ? (
+                    <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
+                  ) : (
+                    <Database className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                  )}
+                  <div>
+                    <span
+                      className={`font-mono text-xs block ${
+                        isUploaded ? "text-foreground" : "text-muted-foreground"
+                      }`}
+                    >
+                      {PARQUET_FILE}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      Single source of truth for all visualizations
+                    </span>
+                  </div>
+                </div>
+                {isUploaded && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeFile(PARQUET_FILE);
+                    }}
+                    className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* CSV files */}
+        <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+          Raw CSV Files
         </h3>
         <div className="space-y-2">
-          {REQUIRED_FILES.map((fileName) => {
+          {REQUIRED_CSV_FILES.map((fileName) => {
             const isUploaded = uploadedFiles.has(fileName);
             return (
               <div
@@ -142,6 +193,24 @@ const CsvUploader = () => {
         </div>
       </div>
 
+      {/* Parquet confirmation */}
+      {parquetInfo && (
+        <div className="mt-4 flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 p-3">
+          <Database className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+          <div className="text-xs">
+            <p className="font-medium text-primary">
+              df_gold.parquet loaded successfully
+            </p>
+            <p className="text-muted-foreground mt-1">
+              <span className="font-mono">{parquetInfo.rowCount.toLocaleString()}</span> rows · {parquetInfo.columns.length} columns
+            </p>
+            <p className="text-muted-foreground mt-0.5 font-mono text-[10px] leading-relaxed">
+              {parquetInfo.columns.join(", ")}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Error message */}
       {parseError && (
         <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
@@ -168,7 +237,11 @@ const CsvUploader = () => {
         ) : (
           <>
             <Upload className="h-4 w-4" />
-            {allFilesReady ? "Process & Visualize" : `Upload ${REQUIRED_FILES.length - uploadedCount} more file${REQUIRED_FILES.length - uploadedCount !== 1 ? "s" : ""}`}
+            {allFilesReady
+              ? "Process & Visualize"
+              : `Upload ${REQUIRED_FILES.length - uploadedCount} more file${
+                  REQUIRED_FILES.length - uploadedCount !== 1 ? "s" : ""
+                }`}
           </>
         )}
       </button>
