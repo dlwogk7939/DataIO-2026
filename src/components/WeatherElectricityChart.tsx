@@ -52,9 +52,14 @@ const WeatherElectricityChart = () => {
   const activeOption = X_AXIS_OPTIONS.find((o) => o.key === xAxisVar)!;
   const isPrecip = xAxisVar === "precipitation";
   const precipTicks = [0, 0.1, 0.2, 0.3, 0.4, 0.5];
-  const xAxisProps = isPrecip
+
+  // Bar mode: fixed precipitation scale; Trend mode: dynamic domain starting at 0
+  const barXAxisProps = isPrecip
     ? { ticks: precipTicks, domain: [-0.05, 0.55] as [number, number], type: "number" as const }
     : {};
+
+  // Trend mode gets a dynamic domain computed from chartData (defined after chartData)
+  // We'll compute trendXAxisProps after chartData is ready
 
 
   const chartData = useMemo(() => {
@@ -130,6 +135,14 @@ const WeatherElectricityChart = () => {
         label: `${binCenter}${activeOption.unit}`,
       }));
   }, [data, xAxisVar, activeOption.unit]);
+
+  // Trend mode: dynamic domain for precipitation, starting at 0 with slight padding on the right
+  const trendXAxisProps = useMemo(() => {
+    if (!isPrecip || chartData.length === 0) return {};
+    const maxVal = Math.max(...chartData.map((d) => d.weatherVal));
+    const domainMax = Math.max(0.1, maxVal + 0.02); // small right padding
+    return { domain: [0, domainMax] as [number, number], type: "number" as const };
+  }, [isPrecip, chartData]);
 
   if (!data) return null;
 
@@ -216,7 +229,7 @@ const WeatherElectricityChart = () => {
                     fill: "hsl(220, 10%, 50%)",
                     offset: 5,
                   }}
-                  {...xAxisProps}
+                  {...barXAxisProps}
                 />
                 <YAxis
                   tick={{ fontSize: 10, fill: "hsl(220, 10%, 50%)" }}
@@ -260,7 +273,7 @@ const WeatherElectricityChart = () => {
                     fill: "hsl(220, 10%, 50%)",
                     offset: 5,
                   }}
-                  {...xAxisProps}
+                  {...trendXAxisProps}
                 />
                 <YAxis
                   tick={{ fontSize: 10, fill: "hsl(220, 10%, 50%)" }}
