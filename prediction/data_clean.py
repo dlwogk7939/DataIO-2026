@@ -19,8 +19,9 @@ import pandas as pd
 import numpy as np
 
 
-DATA_DIRS = ["advanced_core", "advanced_bonus"]
-OUT_DIR = "cleaned_data"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIRS = [os.path.join(BASE_DIR, "advanced_core"), os.path.join(BASE_DIR, "advanced_bonus")]
+OUT_DIR = os.path.join(BASE_DIR, "cleaned_data")
 OUTLIER_PERCENTILE = 0.999
 
 METER_PATTERN = "meter-readings-*.csv"

@@ -15,7 +15,8 @@ import os
 import sys
 import pandas as pd
 
-FEATURE_PATH = "cleaned_data/meter_building_weather_merged.csv"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FEATURE_PATH = os.path.join(BASE_DIR, "cleaned_data", "meter_building_weather_merged.csv")
 UTILITY_FILTER = "ELECTRICITY"
 AGGREGATE_BY_DATE = True
 AGGREGATE_TARGET_AS_MEAN = True
@@ -135,7 +136,15 @@ def evaluate_model(model, X_test, y_test):
     print("MAE % of mean target:", round(mae_pct, 3), "%")
 
 
+def resolve_path(path: str) -> str:
+    if os.path.isabs(path):
+        return path
+    return os.path.join(BASE_DIR, path)
+
+
 def predict_from_weather(model, weather_path, out_path):
+    weather_path = resolve_path(weather_path)
+    out_path = resolve_path(out_path)
     if not os.path.exists(weather_path):
         raise FileNotFoundError(f"Missing {weather_path}")
 
