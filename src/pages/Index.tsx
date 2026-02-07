@@ -8,6 +8,7 @@ import TemperatureScatterChart from "@/components/TemperatureScatterChart";
 import EnergyIntensityChart from "@/components/EnergyIntensityChart";
 import DailyEnergyWeatherChart from "@/components/DailyEnergyWeatherChart";
 import InsightsPanel from "@/components/InsightsPanel";
+import PredictedUsageChart from "@/components/PredictedUsageChart";
 
 const Index = () => {
   const { data, reset } = useDataContext();
@@ -112,6 +113,9 @@ const Index = () => {
               <TemperatureScatterChart />
               <EnergyIntensityChart />
               <DailyEnergyWeatherChart />
+              <div className="lg:col-span-2">
+                <PredictedUsageChart />
+              </div>
               <div className="lg:col-span-2">
                 <InsightsPanel />
               </div>

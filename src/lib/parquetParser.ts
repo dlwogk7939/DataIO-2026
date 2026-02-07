@@ -1,6 +1,6 @@
 // @ts-ignore - hyparquet types
 import { parquetReadObjects, parquetMetadata } from "hyparquet";
-import type { ParsedData, Building, HourlyEntry, DailyEntry, BuildingConsumption, TempVsElectricity, SummaryMetrics, BuildingMoMChange } from "./csvParser";
+import type { ParsedData, Building, HourlyEntry, DailyEntry, BuildingConsumption, TempVsElectricity, SummaryMetrics, BuildingMoMChange, BuildingPrediction } from "./csvParser";
 
 // Re-export ParsedData for convenience
 export type { ParsedData };
@@ -344,6 +344,54 @@ export function buildParsedDataFromGold(rows: GoldRow[]): ParsedData {
     }
   }
 
+  // --- Next-month predictions (simple linear extrapolation) ---
+  // For each building, compute average MoM % change across all transitions,
+  // then project: predictedKwh = lastMonthKwh * (1 + avgMoMChange)
+  const buildingPredictions: BuildingPrediction[] = [];
+  for (const [sitename, months] of buildingMonthMap) {
+    const sortedMonths = Array.from(months.entries()).sort(([a], [b]) => a.localeCompare(b));
+    if (sortedMonths.length < 2) continue;
+
+    const lastMonthEntry = sortedMonths[sortedMonths.length - 1];
+    const lastMonthKwh = lastMonthEntry[1];
+    const lastMonthKey = lastMonthEntry[0];
+
+    // Calculate average MoM % change
+    const pctChanges: number[] = [];
+    for (let i = 1; i < sortedMonths.length; i++) {
+      const prev = sortedMonths[i - 1][1];
+      const curr = sortedMonths[i][1];
+      if (prev > 0) {
+        pctChanges.push((curr - prev) / prev);
+      }
+    }
+    const avgMoMChange = pctChanges.length > 0
+      ? pctChanges.reduce((s, v) => s + v, 0) / pctChanges.length
+      : 0;
+
+    const predictedKwh = Math.max(0, lastMonthKwh * (1 + avgMoMChange));
+
+    // Compute next month label
+    const [y, m] = lastMonthKey.split("-").map(Number);
+    const nextMonth = m === 12 ? 1 : m + 1;
+    const nextYear = m === 12 ? y + 1 : y;
+    const predictedMonthLabel = new Date(nextYear, nextMonth - 1).toLocaleDateString("en-US", {
+      month: "short",
+      year: "numeric",
+    });
+
+    buildingPredictions.push({
+      name: sitename,
+      lastMonthKwh: Math.round(lastMonthKwh),
+      predictedKwh: Math.round(predictedKwh),
+      avgMoMChangePct: Math.round(avgMoMChange * 10000) / 100,
+      predictedMonthLabel,
+    });
+  }
+
+  // Sort by predicted usage descending, take top 10
+  buildingPredictions.sort((a, b) => b.predictedKwh - a.predictedKwh);
+
   return {
     buildings,
     hourlyData,
@@ -352,5 +400,6 @@ export function buildParsedDataFromGold(rows: GoldRow[]): ParsedData {
     tempVsElectricity,
     summaryMetrics,
     buildingMoMChanges,
+    buildingPredictions,
   };
 }
