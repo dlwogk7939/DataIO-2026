@@ -30,11 +30,8 @@ BUILDING_FILE = "building_metadata.csv"
 
 WEATHER_FEATURE_COLS = [
     "temperature_2m",
-    "shortwave_radiation",
-    "relative_humidity_2m",
     "precipitation",
     "wind_speed_10m",
-    "cloud_cover",
 ]
 
 BUILDING_KEEP_COLS = [
@@ -51,7 +48,6 @@ METER_KEEP_COLS = [
     "utility",
     "readingtime",
     "readingunits",
-    "readingunitsdisplay",
     "readingwindowsum",
 ]
 

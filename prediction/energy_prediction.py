@@ -119,10 +119,13 @@ def load_data(by_building: bool = False, building_name: Optional[str] = DEFAULT_
     if "simscode" in df.columns:
         simscode_norm = df["simscode"].map(normalize_simscode)
         if EXCLUDE_SIMSCODES:
-            df = df[~simscode_norm.isin(EXCLUDE_SIMSCODES)]
+            keep_mask = ~simscode_norm.isin(EXCLUDE_SIMSCODES)
+            df = df[keep_mask].copy()
+            simscode_norm = simscode_norm[keep_mask]
         if building_name:
             building_numbers = resolve_building_numbers(building_name)
-            df = df[simscode_norm.isin(building_numbers)]
+            building_mask = simscode_norm.isin(building_numbers)
+            df = df[building_mask].copy()
     elif building_name or EXCLUDE_SIMSCODES:
         raise ValueError("Missing simscode column required for building filtering.")
 
