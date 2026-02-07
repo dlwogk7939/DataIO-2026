@@ -95,9 +95,9 @@ const SeasonalScatterChart = () => {
           Each dot = one day, colored by season — internal loads dominate over weather sensitivity
         </p>
       </div>
-      <div className="h-[360px]">
+      <div className="h-[380px]">
         <ResponsiveContainer width="100%" height="100%">
-          <ScatterChart margin={{ top: 10, right: 15, left: 10, bottom: 35 }}>
+          <ScatterChart margin={{ top: 10, right: 15, left: 30, bottom: 50 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(220, 14%, 18%)" />
             <XAxis
               type="number"
@@ -106,7 +106,7 @@ const SeasonalScatterChart = () => {
               tick={{ fontSize: 10, fill: "hsl(220, 10%, 50%)" }}
               tickLine={false}
               axisLine={{ stroke: "hsl(220, 14%, 18%)" }}
-              label={{ value: "Temperature (°F)", position: "bottom", fontSize: 10, fill: "hsl(220, 10%, 50%)", offset: 0 }}
+              label={{ value: "Temperature (°F)", position: "bottom", fontSize: 10, fill: "hsl(220, 10%, 50%)", offset: 8 }}
             />
             <YAxis
               type="number"
@@ -120,8 +120,8 @@ const SeasonalScatterChart = () => {
                 if (v >= 1_000) return `${(v / 1_000).toFixed(0)}k`;
                 return String(v);
               }}
-              width={55}
-              label={{ value: "Daily Electricity (kWh)", angle: -90, position: "insideLeft", fontSize: 10, fill: "hsl(220, 10%, 50%)", dx: -15 }}
+              width={60}
+              label={{ value: "Daily Electricity (kWh)", angle: -90, position: "insideLeft", fontSize: 10, fill: "hsl(220, 10%, 50%)", dx: -25 }}
             />
             <ZAxis range={[30, 30]} />
             <Tooltip
@@ -138,7 +138,7 @@ const SeasonalScatterChart = () => {
             <Legend
               verticalAlign="bottom"
               align="center"
-              wrapperStyle={{ fontSize: "10px", paddingTop: "12px" }}
+              wrapperStyle={{ fontSize: "10px", paddingTop: "18px" }}
               iconType="circle"
               iconSize={8}
             />
