@@ -1,4 +1,4 @@
-# Campus Energy Insights
+# Campus Energy Analytics
 
 Campus building energy analytics dashboard with weather-driven ML prediction.
 
