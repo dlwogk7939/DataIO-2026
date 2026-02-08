@@ -1,73 +1,166 @@
-# Welcome to your Lovable project
+# Campus Energy Insights
 
-## Project info
+Campus building energy analytics dashboard with weather-driven ML prediction.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+This project provides:
+- Interactive analytics dashboards from uploaded CSV datasets
+- Building-level weather sensitivity analysis
+- Real-time electricity usage prediction API (Python + scikit-learn)
 
-## How can I edit this code?
+## Project Overview
 
-There are several ways of editing your application.
+The app is split into two parts:
+- Frontend (`React + TypeScript + Vite`): CSV upload, analytics charts, and prediction form
+- Prediction service (`Python`): data cleaning, model training, and REST-like inference endpoint
 
-**Use Lovable**
+Core prediction input features:
+- `precipitation`
+- `temperature_2m`
+- `wind_speed_10m`
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+Target:
+- `readingwindowsum` (electricity usage)
 
-Changes made via Lovable will be committed automatically to this repo.
+## Tech Stack
 
-**Use your preferred IDE**
+- Frontend: `React`, `TypeScript`, `Vite`, `Tailwind CSS`, `shadcn/ui`, `Recharts`
+- Data parsing/state: `PapaParse`, `React Router`, `TanStack Query`
+- ML/data: `Python`, `pandas`, `numpy`, `scikit-learn`
+- Tooling: `ESLint`, `Vitest`, `Testing Library`
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## Repository Structure
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+```text
+src/                          Frontend app (dashboard + charts + upload + prediction form)
+prediction/
+  data_clean.py               Build cleaned datasets from raw CSVs
+  energy_prediction.py        Train/evaluate/predict with ML models
+  predict_api.py              HTTP prediction API used by frontend
+  cleaned_data/               Cleaned CSV outputs
+  advanced_core/              Raw source CSVs (input)
+  advanced_bonus/             Raw source CSVs (input)
+```
 
-Follow these steps:
+## Prerequisites
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+- `Node.js` 18+ and `npm`
+- `Python` 3.9+ (project uses local `.venv`)
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## Setup
 
-# Step 3: Install the necessary dependencies.
-npm i
+```bash
+# 1) Install frontend dependencies
+npm install
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# 2) Create/activate virtual environment (if needed)
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3) Install Python dependencies
+pip install -r requirements.txt
+```
+
+## Run (Recommended)
+
+Run frontend + prediction API together:
+
+```bash
+npm run dev:ml
+```
+
+- Frontend: `http://localhost:8080`
+- Prediction API: `http://127.0.0.1:8001`
+
+## Run Separately
+
+Frontend only:
+
+```bash
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+Prediction API only:
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```bash
+.venv/bin/python prediction/predict_api.py
+```
 
-**Use GitHub Codespaces**
+## API Endpoints
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- `GET /health`
+- `GET /buildings`
+- `POST /predict`
 
-## What technologies are used for this project?
+Example:
 
-This project is built with:
+```bash
+curl -X POST http://127.0.0.1:8001/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "building": "50",
+    "temperature": 72,
+    "precipitation": 0.1,
+    "wind_speed": 9
+  }'
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Data Pipeline
 
-## How can I deploy this project?
+If you need to rebuild cleaned datasets:
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+1. Put raw CSV files under:
+- `prediction/advanced_core/`
+- `prediction/advanced_bonus/`
 
-## Can I connect a custom domain to my Lovable project?
+2. Run:
 
-Yes, you can!
+```bash
+.venv/bin/python prediction/data_clean.py
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+This generates:
+- `prediction/cleaned_data/weather_daily_selected.csv`
+- `prediction/cleaned_data/building_metadata_selected.csv`
+- `prediction/cleaned_data/meter_premerge_selected.csv`
+- `prediction/cleaned_data/meter_building_weather_merged.csv`
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Model Training / Evaluation
+
+Default (single building, Thompson):
+
+```bash
+.venv/bin/python prediction/energy_prediction.py
+```
+
+Train/evaluate five target buildings:
+
+```bash
+.venv/bin/python prediction/energy_prediction.py --train-five-buildings
+```
+
+Train one building by name:
+
+```bash
+.venv/bin/python prediction/energy_prediction.py --building-name "Thompson Library"
+```
+
+Batch prediction from input weather CSV to output CSV:
+
+```bash
+.venv/bin/python prediction/energy_prediction.py \
+  --input-csv prediction/data/new_daily_weather.csv \
+  --output-csv prediction/data/predictions.csv
+```
+
+## Useful Scripts
+
+- `npm run dev`: start frontend dev server
+- `npm run dev:ml`: start frontend + Python prediction API together
+- `npm run build`: production build
+- `npm run test`: run tests
+- `npm run lint`: run lint checks
+
+## Notes
+
+- In local dev, frontend calls `/api/predict` and Vite proxies to `http://127.0.0.1:8001/predict`.
+- If you need custom API URL, set `VITE_PREDICT_API_URL` in `.env.local`.

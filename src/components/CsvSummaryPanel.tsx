@@ -17,13 +17,16 @@ const CsvSummaryPanel = ({ info }: Props) => {
       </div>
       <div className="space-y-2">
         {entries.map(([key, fileInfo]) => (
-          <div key={key} className="rounded border border-border/50 bg-card/30 p-2.5">
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-mono text-[11px] text-foreground">{fileInfo.fileName}</span>
-              <span className="font-mono text-[10px] text-muted-foreground">
-                {fileInfo.rowCount.toLocaleString()} rows · {fileInfo.columns.length} cols
-              </span>
-            </div>
+            <div key={key} className="rounded border border-border/50 bg-card/30 p-2.5">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-mono text-[11px] text-foreground">{fileInfo.fileName}</span>
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  {fileInfo.rowCount >= 0
+                    ? `${fileInfo.rowCount.toLocaleString()} rows`
+                    : "header validated"}{" "}
+                  · {fileInfo.columns.length} cols
+                </span>
+              </div>
             <p className="font-mono text-[9px] text-muted-foreground leading-relaxed truncate">
               {fileInfo.columns.join(", ")}
             </p>

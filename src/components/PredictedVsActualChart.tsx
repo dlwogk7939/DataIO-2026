@@ -26,6 +26,17 @@ function formatCompact(v: number): string {
   return String(v);
 }
 
+function quantile(values: number[], q: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = (sorted.length - 1) * Math.max(0, Math.min(1, q));
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sorted[lo];
+  const t = idx - lo;
+  return sorted[lo] * (1 - t) + sorted[hi] * t;
+}
+
 const PredictedVsActualChart = () => {
   const { data } = useDataContext();
 
@@ -33,18 +44,25 @@ const PredictedVsActualChart = () => {
     if (!data?.weatherModel) return { plotData: [], domain: [0, 1] as [number, number], maeFormatted: "0", rmseFormatted: "0" };
 
     const preds = data.weatherModel.predictions;
-    const allVals = [...preds.map((p) => p.actual), ...preds.map((p) => p.predicted)];
-    const maxVal = Math.max(...allVals);
-    const minVal = Math.min(0, Math.min(...allVals));
+    const cleanPreds = preds.filter(
+      (p) => Number.isFinite(p.actual) && Number.isFinite(p.predicted) && p.actual >= 0 && p.predicted >= 0
+    );
+    const allVals = [...cleanPreds.map((p) => p.actual), ...cleanPreds.map((p) => p.predicted)];
+    const p99 = quantile(allVals, 0.99);
+    const plotCap = Math.max(1, p99 * 1.15);
+    const plotRows = cleanPreds
+      .filter((p) => p.actual <= plotCap && p.predicted <= plotCap)
+      .map((p) => ({ actual: p.actual, predicted: p.predicted }));
+    const domainMax = Math.max(1, quantile(allVals, 0.995) * 1.05);
 
     // Error metrics
-    const n = preds.length;
-    const mae = preds.reduce((s, p) => s + Math.abs(p.actual - p.predicted), 0) / n;
-    const rmse = Math.sqrt(preds.reduce((s, p) => s + (p.actual - p.predicted) ** 2, 0) / n);
+    const n = Math.max(cleanPreds.length, 1);
+    const mae = cleanPreds.reduce((s, p) => s + Math.abs(p.actual - p.predicted), 0) / n;
+    const rmse = Math.sqrt(cleanPreds.reduce((s, p) => s + (p.actual - p.predicted) ** 2, 0) / n);
 
     return {
-      plotData: preds.map((p) => ({ actual: p.actual, predicted: p.predicted })),
-      domain: [minVal, maxVal * 1.05] as [number, number],
+      plotData: plotRows,
+      domain: [0, domainMax] as [number, number],
       maeFormatted: formatCompact(Math.round(mae)),
       rmseFormatted: formatCompact(Math.round(rmse)),
     };

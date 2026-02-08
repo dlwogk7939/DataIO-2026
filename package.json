@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:ml": "sh -c '.venv/bin/python prediction/predict_api.py & API_PID=$!; trap \"kill $API_PID\" EXIT; vite'",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",

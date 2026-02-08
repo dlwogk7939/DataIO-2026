@@ -29,6 +29,23 @@ const LINE_COLORS = [
   "hsl(0, 72%, 55%)",
 ];
 
+const TARGET_BUILDING_TOKENS = [
+  ["Thompson Library"],
+  ["Recreation and Physical Activity Center", "RPAC"],
+  ["Knowlton Hall"],
+  ["Hitchcock Hall"],
+  ["Ohio Union"],
+];
+
+function normalizeName(name: string): string {
+  return name.toLowerCase();
+}
+
+function includesAnyToken(name: string, tokens: string[]): boolean {
+  const normalized = normalizeName(name);
+  return tokens.some((token) => normalized.includes(token.toLowerCase()));
+}
+
 const ForecastBaselineChart = () => {
   const { data } = useDataContext();
 
@@ -37,7 +54,40 @@ const ForecastBaselineChart = () => {
     const predictions = data.buildingPredictions;
     if (!predictions || predictions.length === 0) return { chartData: [], buildingNames: [], forecastLabel: "" };
 
-    const top5 = predictions.slice(0, 5);
+    const buildingTypeByName = new Map(data.buildings.map((b) => [b.name, b.type]));
+    const nonUtility = predictions.filter((p) => buildingTypeByName.get(p.name) !== "Utility");
+    const candidatePool = nonUtility.length >= 5 ? nonUtility : predictions;
+
+    const preferredByToken: string[] = [];
+    for (const tokens of TARGET_BUILDING_TOKENS) {
+      const hit = candidatePool.find((p) => includesAnyToken(p.name, tokens));
+      if (hit) preferredByToken.push(hit.name);
+    }
+    const preferredNameSet = new Set(preferredByToken);
+    const preferredPredictions = candidatePool.filter((p) => preferredNameSet.has(p.name));
+
+    const sortedLastKwh = candidatePool
+      .map((p) => p.lastMonthKwh)
+      .filter((v) => Number.isFinite(v) && v > 0)
+      .sort((a, b) => a - b);
+    const medianLastKwh =
+      sortedLastKwh.length > 0
+        ? sortedLastKwh[Math.floor(sortedLastKwh.length / 2)]
+        : 0;
+    const filteredCandidates =
+      medianLastKwh > 0
+        ? candidatePool.filter(
+            (p) =>
+              p.lastMonthKwh >= medianLastKwh * 0.1 &&
+              p.lastMonthKwh <= medianLastKwh * 8
+          )
+        : candidatePool;
+
+    const rankingPool = filteredCandidates.length >= 5 ? filteredCandidates : candidatePool;
+    const chosenPool = preferredPredictions.length >= 3 ? preferredPredictions : rankingPool;
+    const top5 = [...chosenPool]
+      .sort((a, b) => b.lastMonthKwh - a.lastMonthKwh)
+      .slice(0, 5);
     const names = top5.map((b) => b.name);
 
     // Get monthly data for these buildings
@@ -48,12 +98,44 @@ const ForecastBaselineChart = () => {
       monthlyByBuilding.get(entry.name)!.set(entry.monthKey, entry.kwh);
     }
 
-    // Collect all month keys across these buildings, take last 6
+    const buildingValidFloor = new Map<string, number>();
+    for (const name of names) {
+      const months = monthlyByBuilding.get(name);
+      const positive = months
+        ? Array.from(months.values())
+            .filter((kwh) => Number.isFinite(kwh) && kwh > 0)
+            .sort((a, b) => a - b)
+        : [];
+      if (positive.length === 0) {
+        buildingValidFloor.set(name, 0);
+        continue;
+      }
+      const med = positive[Math.floor(positive.length / 2)];
+      buildingValidFloor.set(name, Math.max(10_000, med * 0.2));
+    }
+
+    const isUsableMonthValue = (name: string, kwh: number | undefined): boolean => {
+      if (kwh == null || !Number.isFinite(kwh) || kwh <= 0) return false;
+      const floor = buildingValidFloor.get(name) ?? 0;
+      return floor <= 0 ? true : kwh >= floor;
+    };
+
+    // Collect month keys with enough coverage across selected buildings.
     const allMonthKeys = new Set<string>();
     for (const months of monthlyByBuilding.values()) {
       for (const key of months.keys()) allMonthKeys.add(key);
     }
-    const sortedKeys = Array.from(allMonthKeys).sort().slice(-6);
+    const sortedAllKeys = Array.from(allMonthKeys).sort();
+    const minCoverage = Math.max(2, Math.ceil(names.length * 0.6));
+    const coveredKeys = sortedAllKeys.filter((mk) => {
+      let count = 0;
+      for (const name of names) {
+        const kwh = monthlyByBuilding.get(name)?.get(mk);
+        if (isUsableMonthValue(name, kwh)) count += 1;
+      }
+      return count >= minCoverage;
+    });
+    const sortedKeys = (coveredKeys.length >= 3 ? coveredKeys : sortedAllKeys).slice(-6);
 
     if (sortedKeys.length === 0) return { chartData: [], buildingNames: names, forecastLabel: "" };
 
@@ -79,7 +161,7 @@ const ForecastBaselineChart = () => {
         } else {
           const months = monthlyByBuilding.get(name);
           const kwh = months?.get(mk);
-          point[name] = kwh != null ? Math.round(kwh / 1000) : null;
+          point[name] = isUsableMonthValue(name, kwh) ? Math.round((kwh as number) / 1000) : null;
         }
       }
 
@@ -165,7 +247,7 @@ const ForecastBaselineChart = () => {
             {buildingNames.map((name, i) => (
               <Line
                 key={name}
-                type="monotone"
+                type="linear"
                 dataKey={name}
                 stroke={LINE_COLORS[i % LINE_COLORS.length]}
                 strokeWidth={2}
@@ -179,7 +261,7 @@ const ForecastBaselineChart = () => {
       </div>
 
       <div className="mt-2 text-[10px] text-muted-foreground italic text-right">
-        Linear extrapolation from historical MoM trends — replace with ML model for production
+        Bounded trend estimate with outlier filtering (for stable visualization only)
       </div>
     </div>
   );
