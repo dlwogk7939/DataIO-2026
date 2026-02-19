@@ -163,4 +163,4 @@ Batch prediction from input weather CSV to output CSV:
 ## Notes
 
 - In local dev, frontend calls `/api/predict` and Vite proxies to `http://127.0.0.1:8001/predict`.
-- If you need custom API URL, set `VITE_PREDICT_API_URL` in `.env.local`.
+- If you need custom API URL, set `VITE_PREDICT_API_URL` in `.env.local`
